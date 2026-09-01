@@ -28,6 +28,7 @@ type Server struct {
 	builder   *builder.Builder
 	plugins   map[string]interface{}
 	commands  []string
+	rateLimit *RateLimiter
 	events    []Event
 	maxEvents int
 }
@@ -42,6 +43,7 @@ func NewServer(port int) *Server {
 		builder:   builder.New(),
 		plugins:   make(map[string]interface{}),
 		maxEvents: 100,
+		rateLimit: NewRateLimiter(100, time.Minute), // 每分钟 100 请求
 	}
 }
 
@@ -50,26 +52,29 @@ func (s *Server) SetupRoutes() {
 	// 健康检查
 	s.mux.HandleFunc("/health", s.handleHealth)
 
+	// API 文档
+	s.mux.HandleFunc("/api/docs", s.handleAPIDocs)
+
 	// ==== API v1 ====
 	api := http.NewServeMux()
 	
-	// AI 对话
-	api.HandleFunc("/ai/chat", s.handleAIChat)
+	// AI 对话（限流）
+	api.Handle("/ai/chat", s.rateLimit.Middleware(http.HandlerFunc(s.handleAIChat)))
 	api.HandleFunc("/ai/tools", s.handleAITools)
 	api.HandleFunc("/ai/memory", s.handleAIMemory)
 
-	// 命令
-	api.HandleFunc("/commands", s.handleCommands)
+	// 命令（限流）
+	api.Handle("/commands", s.rateLimit.Middleware(http.HandlerFunc(s.handleCommands)))
 
-	// 事件流 (SSE)
+	// 事件流 (SSE) - 不限流
 	api.HandleFunc("/events", s.handleEvents)
 
 	// 插件管理
 	api.HandleFunc("/plugins", s.handlePlugins)
 	api.HandleFunc("/plugins/register", s.handlePluginRegister)
 
-	// 建筑
-	api.HandleFunc("/build", s.handleBuild)
+	// 建筑（限流）
+	api.Handle("/build", s.rateLimit.Middleware(http.HandlerFunc(s.handleBuild)))
 
 	// 状态
 	api.HandleFunc("/status", s.handleStatus)
@@ -130,6 +135,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version": "1.0",
 		"time":    time.Now().Format(time.RFC3339),
 	})
+}
+
+func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(GetAPIDoc())
 }
 
 func (s *Server) handleAIChat(w http.ResponseWriter, r *http.Request) {
@@ -399,7 +409,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// 简单内联 Dashboard
-	html := dashboardHTML
+	html := dashboardHTMLV2
 	if r.URL.Path != "/" && r.URL.Path != "/index.html" {
 		// SPA 回退
 	}
