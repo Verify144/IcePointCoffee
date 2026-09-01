@@ -1,0 +1,31 @@
+# 冰点咖啡配置示例
+# 复制为 ~/.icepoint/config.yaml 并填写你的实际值
+
+# AI 模型配置（OpenAI 兼容协议）
+ai:
+  base_url: "https://api.openai.com/v1"   # OpenAI / DeepSeek / Qwen / Ollama 等
+  api_key: "sk-xxxxxxxxxxxxxxxxxxxxxxxx"   # 你的 API key
+  model: "gpt-4o-mini"                    # 模型名
+  temperature: 0.7                        # 温度
+  max_tokens: 4096                        # 最大 token
+
+# 网易租赁服配置
+server:
+  address: "example.netease.com:25565"    # 服务器地址
+  player_name: "IcePointBot"              # 玩家名称
+  fb_token: "your_fb_master_token"        # FB Master Token
+  timeout: 30                              # 连接超时（秒）
+
+# 插件配置
+plugin:
+  dir: "./plugins"                         # 插件目录
+  http_port: 8765                          # HTTP RPC 端口（0=禁用）
+
+# 数据库配置
+db:
+  path: "~/.icepoint/data.db"              # 数据库路径
+
+# 日志配置
+log:
+  file: "~/.icepoint/icepoint.log"         # 日志文件（空=stdout）
+  level: "info"                            # debug / info / warn / error

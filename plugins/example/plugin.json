@@ -1,0 +1,6 @@
+{
+  "name": "示例插件",
+  "description": "一个最简单的插件示例",
+  "executable": "plugin",
+  "port": 8766
+}
