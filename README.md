@@ -246,6 +246,74 @@ IcePointCoffee/
 
 ---
 
+## 📈 Prometheus Metrics
+
+访问 `http://localhost:8080/metrics` 获取 Prometheus 格式指标。
+
+### 可用指标
+
+| 指标名 | 类型 | 说明 |
+|--------|------|------|
+| `icepoint_http_requests_total` | Counter | HTTP 请求总数（按 method/path/status） |
+| `icepoint_http_request_duration_seconds` | Histogram | HTTP 请求延迟分布 |
+| `icepoint_ai_chat_total` | Counter | AI 对话总数 |
+| `icepoint_ai_chat_success_total` | Counter | AI 成功对话 |
+| `icepoint_ai_chat_duration_seconds` | Histogram | AI 响应延迟 |
+| `icepoint_build_total` | Counter | 建筑生成总数（按类型） |
+| `icepoint_build_blocks_total` | Counter | 生成方块总数 |
+| `icepoint_command_total` | Counter | 命令执行总数 |
+| `icepoint_mc_connected` | Gauge | MC 连接状态 (1/0) |
+| `icepoint_event_stream_connections` | Gauge | SSE 连接数 |
+| `icepoint_go_memstats_alloc_bytes` | Gauge | Go 堆内存分配 |
+| `icepoint_go_goroutines` | Gauge | Goroutine 数量 |
+| `icepoint_rate_limited_total` | Counter | 被限流的请求数 |
+
+### Grafana + Prometheus 集成
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'icepoint'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+```
+
+### 示例查询（Grafana）
+
+```promql
+# QPS
+rate(icepoint_http_requests_total[5m])
+
+# P99 延迟
+histogram_quantile(0.99,
+  rate(icepoint_http_request_duration_seconds_bucket[5m]))
+
+# AI 成功率
+sum(rate(icepoint_ai_chat_success_total[5m]))
+  / sum(rate(icepoint_ai_chat_total[5m]))
+
+# 当前连接数
+icepoint_event_stream_connections
+```
+
 ## 📊 MC 协议包清单
 
 | ID | 包名 | 用途 |
