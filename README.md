@@ -193,8 +193,14 @@ IcePointCoffee/
 │   └── example/
 │       ├── main.go
 │       └── plugin.json
-├── BENCHMARK_REPORT.md             # 性能报告
-└── PHASE*.md                       # 各阶段任务追踪
+├── DEVELOPMENT.md                  # 开发日志（阶段任务）
+├── docs/
+│   └── BENCHMARK_REPORT.md         # 性能基准报告
+└── deploy/                          # 部署配置
+    ├── docker-compose.yml
+    ├── prometheus.yml
+    ├── grafana-dashboard.json
+    └── grafana-provisioning/
 ```
 
 ---
