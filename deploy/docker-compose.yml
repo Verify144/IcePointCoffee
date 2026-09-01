@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # IcePoint Coffee - Main Application
+  # ==========================================
+  icepoint:
+    image: golang:1.22-alpine
+    container_name: icepoint-coffee
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+    command: >
+      sh -c "
+        echo 'Building...' &&
+        go build -o icepoint . &&
+        ./icepoint
+      "
+    working_dir: /app
+    networks:
+      - icepoint-net
+
+  # ==========================================
+  # Prometheus - Metrics Collection
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: icepoint-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - icepoint-net
+
+  # ==========================================
+  # Grafana - Metrics Visualization
+  # ==========================================
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: icepoint-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/icepoint.json:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - icepoint-net
+
+networks:
+  icepoint-net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

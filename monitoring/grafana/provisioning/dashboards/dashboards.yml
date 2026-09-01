@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: 'IcePoint Dashboards'
+    folder: 'IcePoint'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

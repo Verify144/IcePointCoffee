@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/Verify144/IcePointCoffee/internal/metrics"
 )
 
 // RateLimiter 限流器
@@ -79,6 +81,8 @@ func (r *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		key := req.RemoteAddr
 		if !r.Allow(key) {
+			// 记录限流事件
+			metrics.DefaultBusiness.IncRateLimited()
 			SendError(w, http.StatusTooManyRequests, 429, "请求过快", "请稍后再试")
 			return
 		}

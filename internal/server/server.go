@@ -191,6 +191,10 @@ func (s *Server) handleAIChat(w http.ResponseWriter, r *http.Request) {
 	s.memory.Add(ai.Message{Role: "assistant", Content: response})
 	s.addEvent("ai_chat", map[string]string{"message": req.Message, "response": response})
 
+	// AI metrics
+	aiSuccess := !strings.HasPrefix(response, "AI 错误")
+	metrics.DefaultBusiness.IncAIChat(aiSuccess, len(response))
+
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"response": response,
 		"tools":    s.registry.ToOpenAI(),
@@ -236,6 +240,7 @@ func (s *Server) handleCommands(w http.ResponseWriter, r *http.Request) {
 		s.commands = append(s.commands, req.Command)
 		s.mu.Unlock()
 		s.addEvent("command", map[string]string{"cmd": req.Command})
+		metrics.DefaultBusiness.IncCommand(true)
 		jsonResponse(w, http.StatusOK, map[string]string{"status": "queued", "command": req.Command})
 	default:
 		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
@@ -355,6 +360,7 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	metrics.DefaultBusiness.IncBuild(req.Type, blockCount)
 
 	s.addEvent("build", map[string]string{"type": req.Type, "result": result})
+	metrics.DefaultBusiness.IncBuild(req.Type, estimateBlockCount(result))
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"type":   req.Type,
 		"result": result,
@@ -365,6 +371,10 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// 更新 Gauge 指标
+	metrics.DefaultBusiness.SetPluginCount(len(s.plugins))
+	metrics.DefaultBusiness.SetMemorySize(s.memory.Size())
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"uptime":      time.Since(time.Now().Add(-1 * time.Hour)).String(),
