@@ -1,7 +1,5 @@
 # ☕ IcePoint Coffee
 
-> 自研 Raknet 协议栈 + AI 建筑助手 + Web Dashboard
-
 **MIT License** · Go 1.21+ · 零外部 MC 依赖 · 自研比例 100%
 
 [![Go Version](https://img.shields.io/badge/Go-1.21%2B-blue)](https://go.dev)
