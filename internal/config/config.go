@@ -58,7 +58,7 @@ type ServerConfig struct {
 	// 玩家名称
 	PlayerName string `mapstructure:"player_name"`
 
-	// FB Master Token
+	// FB Token
 	FBToken string `mapstructure:"fb_token"`
 
 	// 连接超时（秒）
@@ -187,17 +187,8 @@ func applyEnvOverrides(cfg *Config) {
 
 // Validate 校验配置是否合法。
 func (c *Config) Validate() error {
-	if c.AI.BaseURL == "" {
-		return fmt.Errorf("ai.base_url 不能为空")
-	}
-	if c.AI.APIKey == "" {
-		return fmt.Errorf("ai.api_key 不能为空")
-	}
-	if c.Server.Address == "" {
-		return fmt.Errorf("server.address 不能为空")
-	}
-	if c.Server.FBToken == "" {
-		return fmt.Errorf("server.fb_token 不能为空")
-	}
+	// AI 配置可选（不填则使用 Mock AI）
+	// FB Token 可选（不填则无法连接 MC 服务器）
+	// 服务器地址可选（不填则无法连接）
 	return nil
 }

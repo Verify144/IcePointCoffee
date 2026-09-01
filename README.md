@@ -87,12 +87,6 @@ plugin:
   http_port: 8080                  # Dashboard 端口（设为 0 则不启动）
 ```
 
-### 获取 FB Token
-
-1. 登录网易租赁服账号
-2. 打开浏览器 DevTools → Application → Cookies → `session_token`
-3. 或使用 VerifyImporter 获取
-
 ---
 
 ## 🚀 快速开始
@@ -395,7 +389,6 @@ MIT License - 详见 [LICENSE](LICENSE)
 ## 🙏 致谢
 
 - 自研 Raknet 参考 [neomega-core](https://github.com/Neilgravity/neomega-core) 架构
-- FB Auth 参考网易官方 SDK 行为
 - ECDH 参考 RFC 7748 / RFC 8442
 - MC 协议参考 [protocol MaineCraft](https://github.com/Marcussacapuces) 文档
 

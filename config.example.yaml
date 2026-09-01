@@ -23,11 +23,6 @@ server:
   # 租赁服房间号（房间 ID）
   address: "12345678"
   
-  # Facebook Master Token
-  # 获取方式：登录租赁服后从浏览器 Cookie 获取
-  # 或者使用 VerifyImporter 工具获取
-  fb_token: "your-fb-master-token-here"
-  
   # 玩家名称
   player_name: "IcePoint"
 

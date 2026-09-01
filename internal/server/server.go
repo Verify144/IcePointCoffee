@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -55,7 +54,7 @@ func (s *Server) SetupRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
 
 	// Prometheus Metrics
-	s.mux.Handle("/metrics", s.metricsHandler())
+	s.mux.Handle("/metrics", s.MetricsHandler())
 
 	// API 文档
 	s.mux.HandleFunc("/api/docs", s.handleAPIDocs)
@@ -98,7 +97,7 @@ func (s *Server) Start() error {
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.port),
-		Handler:      s.metricsMiddleware(s.withCORS(s.mux)),
+		Handler:      s.MetricsMiddleware(s.withCORS(s.mux)),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -426,50 +425,6 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 	})
 }
 
-// metricsHandler Prometheus metrics 端点
-func (s *Server) metricsHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-
-		// 更新运行时指标
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		metrics.DefaultBusiness.SetMemorySize(0)
-
-		// 输出 build info
-		fmt.Fprintf(w, "# HELP icepoint_info IcePoint Coffee info\n")
-		fmt.Fprintf(w, "# TYPE icepoint_info gauge\n")
-		fmt.Fprintf(w, "icepoint_info{version=\"1.0.0\",name=\"IcePointCoffee\"} 1\n")
-		fmt.Fprintf(w, "# HELP icepoint_build_info Build information\n")
-		fmt.Fprintf(w, "# TYPE icepoint_build_info gauge\n")
-		fmt.Fprintf(w, "icepoint_build_info{goversion=\"%s\"} 1\n\n", runtime.Version())
-
-		// 输出所有注册指标
-		metrics.DefaultRegistry.WriteTo(w)
-	})
-}
-
-// metricsMiddleware HTTP 指标中间件
-func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
-		metrics.DefaultBusiness.IncHTTPRequest(r.URL.Path, r.Method, rec.status)
-	})
-}
-
-// statusRecorder 捕获真实状态码
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
-}
-
-// ==== Helpers ====
 
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Verify144/IcePointCoffee/internal/metrics"
 )
 
 func TestRateLimiter(t *testing.T) {
@@ -123,43 +121,6 @@ func TestServerNew(t *testing.T) {
 	}
 }
 
-func TestMetricsHandler(t *testing.T) {
-	metrics.InitDefault()
-	s := NewServer(8080)
-	s.SetupRoutes()
-
-	req := httptest.NewRequest("GET", "/metrics", nil)
-	rec := httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Expected 200, got %d", rec.Code)
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "icepoint_info") {
-		t.Errorf("Metrics should contain icepoint_info: %s", string(body[:min(200, len(body))]))
-	}
-	if !strings.Contains(body, "icepoint_ai_chat_total") {
-		t.Errorf("Metrics should contain ai metrics")
-	}
-}
-
-func TestMetricsMiddleware(t *testing.T) {
-	metrics.InitDefault()
-	s := NewServer(8080)
-	s.SetupRoutes()
-	handler := s.metricsMiddleware(s.mux)
-
-	// 模拟一次请求
-	req := httptest.NewRequest("GET", "/health", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Expected 200, got %d", rec.Code)
-	}
-}
-
 func TestEstimateBlockCount(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -167,7 +128,7 @@ func TestEstimateBlockCount(t *testing.T) {
 	}{
 		{"✅ 生成 1024 个块（5 种）\nstone: 500", 1024},
 		{"✅ 生成 5000 个块（10 种）", 5000},
-		{"no emoji line", 100}, // 默认值
+		{"no emoji line", 100},
 		{"", 100},
 	}
 	for _, tt := range tests {
@@ -176,11 +137,4 @@ func TestEstimateBlockCount(t *testing.T) {
 			t.Errorf("estimateBlockCount(%q) = %d, want %d", tt.input, got, tt.expected)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
