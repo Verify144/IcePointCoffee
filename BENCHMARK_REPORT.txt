@@ -1,0 +1,39 @@
+BenchmarkEncodeMovePlayer-2               	 5143417	       526.0 ns/op	     152 B/op	       8 allocs/op
+BenchmarkEncodeTeleport-2                 	 6791902	       387.5 ns/op	     152 B/op	       8 allocs/op
+BenchmarkEncodeText-2                     	17742764	       136.7 ns/op	      64 B/op	       1 allocs/op
+BenchmarkEncodeSetTitle-2                 	21420967	       118.5 ns/op	      64 B/op	       1 allocs/op
+BenchmarkEncodeCommandRequest-2           	 8882175	       226.1 ns/op	     120 B/op	       3 allocs/op
+BenchmarkEncodeBossBar-2                  	 7975828	       287.5 ns/op	     120 B/op	       4 allocs/op
+BenchmarkEncodePlayerListAdd-2            	 3503244	       851.7 ns/op	     252 B/op	       6 allocs/op
+BenchmarkEncodePlayerListRemove-2         	16322985	       141.8 ns/op	      64 B/op	       1 allocs/op
+BenchmarkEncodeInventoryContent-2         	 6017659	       340.7 ns/op	     118 B/op	       5 allocs/op
+BenchmarkEncodeContainerOpen-2            	10050435	       321.8 ns/op	     124 B/op	       5 allocs/op
+BenchmarkEncodePlayerSkin-2               	 4044417	       654.7 ns/op	     264 B/op	       9 allocs/op
+BenchmarkEncodeTransfer-2                 	13033213	       169.8 ns/op	     114 B/op	       3 allocs/op
+BenchmarkEncodeMapData-2                  	33683994	       108.9 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDecodeVarint-2                   	 4452204	       569.7 ns/op	     512 B/op	       8 allocs/op
+BenchmarkReadWriteFloat64-2               	11042114	       279.0 ns/op	     176 B/op	       5 allocs/op
+BenchmarkReadWriteInt32-2                 	 9138555	       341.7 ns/op	     168 B/op	       5 allocs/op
+BenchmarkReadWriteString-2                	15265704	       175.8 ns/op	     160 B/op	       3 allocs/op
+BenchmarkBufferAlloc-2                    	86500880	        30.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferPool-2                     	100000000	        28.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkJSONEncode-2                     	 1342075	      1668 ns/op	     416 B/op	      11 allocs/op
+BenchmarkJSONDecode-2                     	  879726	      2727 ns/op	     664 B/op	      20 allocs/op
+BenchmarkCommandBatchFlush-2              	 3004304	       873.2 ns/op	    1888 B/op	       3 allocs/op
+BenchmarkBackoff-2                        	131000455	        16.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConnectionPoolAcquireRelease-2   	21621730	       107.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConnectionPoolCleanup-2          	35832078	        77.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEventBufferPush-2                	69243066	        32.51 ns/op	      32 B/op	       0 allocs/op
+BenchmarkConcurrentWrites-2               	129930592	        18.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConcurrentVarintWrites-2         	308147736	        16.26 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/Verify144/IcePointCoffee/internal/netherite/protocol	96.501s
+BenchmarkBuildHouse-2    	  100658	     27292 ns/op	   49365 B/op	      25 allocs/op
+BenchmarkBuildTower-2    	   30180	    100945 ns/op	  155560 B/op	      19 allocs/op
+BenchmarkBuildCircle-2   	  120104	     26247 ns/op	   48949 B/op	      16 allocs/op
+BenchmarkBuildSphere-2   	  145821	     16236 ns/op	   24370 B/op	      15 allocs/op
+BenchmarkBuildWall-2     	  309260	      9265 ns/op	   12169 B/op	      13 allocs/op
+BenchmarkBuildFloor-2    	  247309	      8704 ns/op	   12169 B/op	      13 allocs/op
+BenchmarkBuildRect-2     	  130016	     15842 ns/op	   24354 B/op	      13 allocs/op
+PASS
+ok  	github.com/Verify144/IcePointCoffee/internal/builder	22.138s

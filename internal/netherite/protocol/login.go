@@ -69,6 +69,10 @@ const (
 	IDContainerClose                 = 0xF9
 	IDSetTitle                       = 0x5C
 	IDAnimate                        = 0xE1
+	IDPlayerList                     = 0x3F
+	IDCamera                         = 0x9B
+	IDTransfer                       = 0x9A
+	IDGameRulesChanged               = 0xA1
 	IDNeteaseMiscellaneous           = 0xF8
 	IDPyRpc                          = 0xFF
 )
