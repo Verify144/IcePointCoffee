@@ -1,0 +1,19 @@
+# Binaries
+icepoint
+icepoint.exe
+*.exe
+*.bin
+
+# Build artifacts
+/dist/
+/build/
+
+# Config files (user-local)
+config.yaml
+config.local.yaml
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
