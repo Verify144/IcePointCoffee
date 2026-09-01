@@ -1,4 +1,3 @@
-// Package ai 提供 OpenAI 兼容协议的客户端。
 package ai
 
 import (
@@ -9,197 +8,165 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/Verify144/IcePointCoffee/internal/config"
 )
 
-// Client OpenAI 兼容 AI 客户端。
+// Client AI 客户端
 type Client struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	apiURL  string
+	apiKey  string
+	model   string
+	timeout time.Duration
+	http    *http.Client
 }
 
-// NewClient 创建 AI 客户端。
-func NewClient(cfg config.AIConfig) *Client {
+// Config AI 配置
+type Config struct {
+	APIURL  string
+	APIKey  string
+	Model   string
+	Timeout time.Duration
+}
+
+// NewClient 创建 AI 客户端
+func NewClient(cfg Config) *Client {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	if cfg.Model == "" {
+		cfg.Model = "gpt-3.5-turbo"
+	}
 	return &Client{
-		baseURL: cfg.BaseURL,
+		apiURL:  cfg.APIURL,
 		apiKey:  cfg.APIKey,
 		model:   cfg.Model,
-		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		timeout: cfg.Timeout,
+		http:    &http.Client{Timeout: cfg.Timeout},
 	}
 }
 
-// ChatRequest 聊天请求。
+// ChatRequest 聊天请求
 type ChatRequest struct {
-	Model       string         `json:"model"`
-	Messages    []ChatMessage  `json:"messages"`
-	Temperature float64        `json:"temperature,omitempty"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Stream      bool          `json:"stream,omitempty"`
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+	Tools    []OpenAITool `json:"tools,omitempty"`
+	Stream   bool      `json:"stream"`
 }
 
-// ChatMessage 聊天消息。
-type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-	Name    string `json:"name,omitempty"`
-}
-
-// ChatResponse 聊天响应。
+// ChatResponse 聊天响应
 type ChatResponse struct {
 	ID      string   `json:"id"`
-	Model   string   `json:"model"`
 	Choices []Choice `json:"choices"`
-	Usage   Usage    `json:"usage"`
 }
 
-// Choice 选项。
+// Choice 选择
 type Choice struct {
-	Index        int         `json:"index"`
-	Message      ChatMessage `json:"message"`
-	FinishReason string      `json:"finish_reason"`
+	Message      ChoiceMessage `json:"message"`
+	FinishReason string        `json:"finish_reason"`
 }
 
-// Usage 用量。
-type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+// ChoiceMessage 选择消息
+type ChoiceMessage struct {
+	Role    string      `json:"role"`
+	Content string      `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
-// Chat 发送聊天请求。
-func (c *Client) Chat(ctx context.Context, messages []ChatMessage) (*ChatResponse, error) {
+// ToolCall 工具调用
+type ToolCall struct {
+	ID       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function FunctionCall `json:"function"`
+}
+
+// FunctionCall 函数调用
+type FunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+// Chat 单轮对话
+func (c *Client) Chat(ctx context.Context, messages []Message) (string, error) {
 	req := ChatRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: 0.7,
+		Model:    c.model,
+		Messages: messages,
 	}
-
-	body, err := json.Marshal(req)
+	resp, err := c.do(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
+		return "", err
 	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
+	}
+	return resp.Choices[0].Message.Content, nil
+}
 
-	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+// ChatWithTools 带工具的对话
+func (c *Client) ChatWithTools(ctx context.Context, messages []Message, tools []Tool) (string, error) {
+	// 转换 tools 为 OpenAI 格式
+	openAITools := convertTools(tools)
+	req := ChatRequest{
+		Model:    c.model,
+		Messages: messages,
+		Tools:    openAITools,
+	}
+	resp, err := c.do(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
+		return "", err
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
+	}
+	return resp.Choices[0].Message.Content, nil
+}
+
+func (c *Client) do(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
 	}
 
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL+"/chat/completions", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
-	httpReq.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("AI 返回错误 %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("AI API error: %d %s", resp.StatusCode, string(body))
 	}
 
-	var result ChatResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	var chatResp ChatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return nil, err
 	}
-
-	return &result, nil
+	return &chatResp, nil
 }
 
-// ChatStream 发送流式聊天请求。
-func (c *Client) ChatStream(ctx context.Context, messages []ChatMessage, handler func(content string)) error {
-	req := ChatRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: 0.7,
-		Stream:      true,
+func convertTools(tools []Tool) []OpenAITool {
+	result := make([]OpenAITool, 0, len(tools))
+	for _, t := range tools {
+		result = append(result, OpenAITool{
+			Type: "function",
+			Function: OpenAIToolFunction{
+				Name:        t.Name(),
+				Description: t.Description(),
+				Parameters:  t.Parameters(),
+			},
+		})
 	}
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
-	httpReq.Header.Set("Accept", "text/event-stream")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("AI 返回错误 %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	// 解析 SSE 流
-	buf := make([]byte, 4096)
-	reader := resp.Body
-	for {
-		n, err := reader.Read(buf)
-		if n > 0 {
-			content := parseSSE(buf[:n])
-			if content != "" {
-				handler(content)
-			}
-		}
-		if err != nil {
-			break
-		}
-	}
-
-	return nil
-}
-
-// parseSSE 从 SSE 数据中提取 content。
-func parseSSE(data []byte) string {
-	text := string(data)
-	for {
-		idx := -1
-		for i := 0; i < len(text)-6; i++ {
-			if text[i] == 'd' && text[i+1] == 'a' && text[i+2] == 't' && text[i+3] == 'a' && text[i+4] == ':' {
-				idx = i + 5
-				break
-			}
-		}
-		if idx < 0 {
-			return ""
-		}
-		text = text[idx:]
-		// 解析 JSON
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal([]byte(text), &chunk); err != nil {
-			return ""
-		}
-		if len(chunk.Choices) > 0 {
-			return chunk.Choices[0].Delta.Content
-		}
-		return ""
-	}
+	return result
 }

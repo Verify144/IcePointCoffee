@@ -28,7 +28,7 @@ func main() {
 	cfg, err := config.Load("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "配置错误: %v\n", err)
-		fmt.Fprintln(os.Stderr, "\n请创建配置文件 ~/.icepoint/config.yaml，参考 config.example.yaml")
+		fmt.Fprintln(os.Stderr, "\n请创建配置文件 ~/.icepoint/config.yaml")
 		os.Exit(1)
 	}
 
@@ -49,9 +49,19 @@ func main() {
 
 	// 初始化组件
 	taskStore := db.NewTaskStore(database)
-	aiClient := ai.NewClient(cfg.AI)
+
+	var aiClient *ai.Client
+	if cfg.AI.BaseURL != "" && cfg.AI.APIKey != "" {
+		aiClient = ai.NewClient(ai.Config{
+			APIURL:  cfg.AI.BaseURL,
+			APIKey:  cfg.AI.APIKey,
+			Model:   cfg.AI.Model,
+			Timeout: 30 * time.Second,
+		})
+	}
+
 	agentEngine := agent.NewEngine(aiClient, taskStore)
-	buildEngine := builder.NewBuilder()
+	buildEngine := builder.New()
 	pluginManager := plugin.NewManager(cfg.Plugin.Dir)
 
 	// 初始化 MC 客户端
@@ -66,7 +76,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "MC 客户端初始化失败: %v\n", err)
 		mcClient = nil
 	} else {
-		// 初始化事件处理器和异步执行器
 		eventProcessor := mc.NewEventProcessor(mcClient)
 		eventProcessor.Start()
 
@@ -74,27 +83,11 @@ func main() {
 		asyncExecutor.Start()
 		defer asyncExecutor.Stop()
 
-		// 设置事件回调
 		eventProcessor.RegisterHandler(protocol.IDText, func(data []byte) error {
-			text, err := protocol.DecodeText(data)
-			if err != nil {
-				return err
-			}
+			text, _ := protocol.DecodeText(data)
 			fmt.Printf("[聊天] %s\n", text.Message)
 			return nil
 		})
-
-		eventProcessor.RegisterHandler(protocol.IDCommandOutput, func(data []byte) error {
-			output, err := protocol.DecodeCommandOutput(data)
-			if err != nil {
-				return err
-			}
-			for _, msg := range output.Messages {
-				fmt.Printf("  > %s\n", msg.Message)
-			}
-			return nil
-		})
-
 		eventProcessor.RegisterHandler(protocol.IDDisconnect, func(data []byte) error {
 			fmt.Println("[MC] 服务器断开连接")
 			return nil
@@ -102,12 +95,11 @@ func main() {
 	}
 
 	cmdExecutor := importer.NewExecutor(mcClient)
+	_ = cmdExecutor
 
 	// 启动插件
-	plugins, err := pluginManager.Scan()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "插件扫描错误: %v\n", err)
-	} else if len(plugins) > 0 {
+	plugins, _ := pluginManager.Scan()
+	if len(plugins) > 0 {
 		fmt.Printf("已扫描到 %d 个插件:\n", len(plugins))
 		for _, p := range plugins {
 			if err := pluginManager.Start(p.ID); err != nil {
@@ -118,7 +110,7 @@ func main() {
 		}
 	}
 
-	// 启动 HTTP RPC 插件服务
+	// 启动 HTTP RPC 服务
 	if cfg.Plugin.HTTPPort > 0 {
 		httpServer := netherite.NewHTTPServer(&netherite.HTTPConfig{
 			Port:    cfg.Plugin.HTTPPort,
@@ -130,6 +122,7 @@ func main() {
 		httpServer.Start()
 		defer httpServer.Stop()
 		fmt.Printf("HTTP RPC 插件服务: http://127.0.0.1:%d\n", cfg.Plugin.HTTPPort)
+		fmt.Printf("📊 Dashboard: http://127.0.0.1:%d/\n", cfg.Plugin.HTTPPort)
 	}
 
 	// 连接服务器
@@ -144,28 +137,30 @@ func main() {
 		}
 	}
 
-	// 主菜单
+	// 主界面
 	fmt.Println()
 	printBanner()
 	fmt.Printf("冰点咖啡 v1.0.0\n")
-	fmt.Printf("模型: %s @ %s\n", cfg.AI.Model, cfg.AI.BaseURL)
+	if cfg.AI.BaseURL != "" {
+		fmt.Printf("模型: %s @ %s\n", cfg.AI.Model, cfg.AI.BaseURL)
+	} else {
+		fmt.Println("AI: Mock 模式")
+	}
 	if mcClient != nil {
 		fmt.Printf("服务器: %s (%s)\n", mcClient.RemoteAddr(), cfg.Server.PlayerName)
 	}
 	if cfg.Plugin.HTTPPort > 0 {
-		fmt.Printf("插件 HTTP: http://127.0.0.1:%d\n", cfg.Plugin.HTTPPort)
+		fmt.Printf("Dashboard: http://127.0.0.1:%d/\n", cfg.Plugin.HTTPPort)
 	}
-	fmt.Printf("插件数: %d\n", len(plugins))
 	fmt.Println()
 	fmt.Println("输入你的建筑需求，例如：")
-	fmt.Println("  build house width:10 height:5 depth:8 block:oak_planks")
-	fmt.Println("  build tower height:30 block:stone_bricks")
-	fmt.Println("  描述: 做一个 5x5 的泥土农场")
+	fmt.Println("  build house width:10 height:5")
+	fmt.Println("  build tower height:30")
 	fmt.Println()
 	fmt.Println("命令: /tasks  /plugins  /connect  /disconnect  /quit")
 
 	for {
-		fmt.Print("❄ > ")
+		fmt.Print("\n❄ > ")
 		var input string
 		if _, err := fmt.Fscan(os.Stdin, &input); err != nil {
 			break
@@ -176,7 +171,7 @@ func main() {
 		}
 
 		switch {
-		case input == "/quit", input == "/exit", input == "quit":
+		case input == "/quit", input == "/exit":
 			fmt.Println("再见!")
 			if mcClient != nil {
 				mcClient.Close()
@@ -208,78 +203,30 @@ func main() {
 				fmt.Println("已断开")
 			}
 			continue
-		case input == "/status":
-			if mcClient != nil && mcClient.IsConnected() {
-				fmt.Println("状态: 已连接")
-			} else {
-				fmt.Println("状态: 未连接")
-			}
-			continue
 		}
 
 		// 处理建筑请求
-		handleRequest(ctx, input, agentEngine, buildEngine, cmdExecutor, mcClient)
+		handleRequest(ctx, input, agentEngine, buildEngine, mcClient)
 	}
 }
 
 func handleRequest(ctx context.Context, prompt string,
 	agentEngine *agent.Engine,
 	buildEngine *builder.Builder,
-	cmdExecutor *importer.Executor,
 	mcClient *mc.Client) {
 
 	fmt.Println("正在分析需求...")
 
-	task, err := agentEngine.Handle(ctx, "cli_user", prompt)
+	task, err := agentEngine.Execute(ctx, prompt)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "处理失败: %v\n", err)
 		return
 	}
 
 	fmt.Printf("任务 ID: %s\n", task.ID)
-	fmt.Printf("描述: %s\n", task.Description)
-	fmt.Printf("类型: %s\n", task.Type)
+	fmt.Printf("结果: %s\n", task.Result)
 	fmt.Printf("状态: %s\n", task.Status)
 	fmt.Println()
-
-	if task.Type == "command" && len(task.Commands) > 0 {
-		fmt.Printf("将执行 %d 条指令:\n", len(task.Commands))
-		for i, cmd := range task.Commands {
-			fmt.Printf("  [%d] %s\n", i+1, cmd)
-		}
-		fmt.Print("\n确认执行? (y/n): ")
-		var confirm string
-		fmt.Fscan(os.Stdin, &confirm)
-		if confirm != "y" && confirm != "Y" {
-			fmt.Println("已取消")
-			return
-		}
-
-		// 执行指令
-		for i, cmd := range task.Commands {
-			fmt.Printf("  执行 [%d/%d]: %s\n", i+1, len(task.Commands), cmd)
-			if mcClient != nil && mcClient.IsConnected() {
-				result, err := mcClient.SendCommand(ctx, cmd)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "  执行失败: %v\n", err)
-					break
-				}
-				fmt.Printf("  结果: %d 成功\n", result.SuccessCount)
-			} else {
-				fmt.Fprintf(os.Stderr, "  未连接到服务器\n")
-				break
-			}
-		}
-		fmt.Println("执行完成!")
-	} else if task.Type == "structure" || task.Type == "import" {
-		if len(task.Commands) > 0 && mcClient != nil && mcClient.IsConnected() {
-			fmt.Println("使用 structure load 指令...")
-			for _, cmd := range task.Commands {
-				mcClient.SendCommand(ctx, cmd)
-			}
-		}
-		fmt.Println("建筑已生成，待导入服务器")
-	}
 }
 
 func listTasks(store *db.TaskStore) {
@@ -293,8 +240,12 @@ func listTasks(store *db.TaskStore) {
 		return
 	}
 	for _, t := range tasks {
-		fmt.Printf("[%s] %s | %s | %s | %s\n",
-			t.ID[:12], t.Prompt, t.Type, t.Status, t.CreatedAt.Format("01-02 15:04"))
+		status := t.Status
+		if t.Error != "" {
+			status = t.Error
+		}
+		fmt.Printf("[%s] %s | %s | %s\n",
+			t.ID[:12], t.Prompt, status, t.CreatedAt.Format("01-02 15:04"))
 	}
 }
 
@@ -333,7 +284,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("建筑请求格式:")
 	fmt.Println("  build type:block_name width:N height:N depth:N radius:N")
-	fmt.Println("  示例: build house width:10 height:5 block:oak_planks")
+	fmt.Println("  示例: build house width:10 height:5")
 }
 
 func expandHome(path string) string {
@@ -365,7 +316,6 @@ func trimSpace(s string) string {
 	return s
 }
 
-// Init sets up signal handling.
 func init() {
 	go func() {
 		ch := make(chan os.Signal, 1)

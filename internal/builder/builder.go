@@ -1,305 +1,194 @@
-// Package builder 负责将建筑需求转换为可执行指令。
-// 冰点咖啡内置的简易建筑生成器，复杂结构由插件处理。
+// Package builder 提供建筑生成功能。
 package builder
 
 import (
 	"fmt"
-	"math"
-	"strconv"
 	"strings"
 )
 
-// BuildRequest 建筑请求。
-type BuildRequest struct {
-	Type        string  `json:"type"`        // house | tower | circle | sphere | wall | floor
-	CenterX     int     `json:"center_x"`
-	CenterY     int     `json:"center_y"`
-	CenterZ     int     `json:"center_z"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	Depth       int     `json:"depth"`
-	Radius      int     `json:"radius"`
-	BlockName   string  `json:"block_name"`
-	Roof        bool    `json:"roof"`
-	Hollow      bool    `json:"hollow"`
+// Block 块
+type Block struct {
+	X, Y, Z int
+	Type    string
 }
 
-// BuildResponse 建筑结果。
-type BuildResponse struct {
-	Commands    []string `json:"commands"`
-	BlockCount  int      `json:"block_count"`
-	Description string   `json:"description"`
+// Builder 建筑生成器
+type Builder struct {
+	blocks []Block
 }
 
-// Build 生成建筑指令。
-func Build(req BuildRequest) (*BuildResponse, error) {
-	if req.BlockName == "" {
-		req.BlockName = "minecraft:stone"
+// New 创建 Builder
+func New() *Builder {
+	return &Builder{}
+}
+
+// Build 生成建筑
+func (b *Builder) Build(structureType string, args map[string]interface{}) (string, error) {
+	b.blocks = nil
+	size := 10
+	if s, ok := args["size"].(int); ok {
+		size = s
 	}
-	if !strings.Contains(req.BlockName, ":") {
-		req.BlockName = "minecraft:" + req.BlockName
+	x, y, z := 0, 64, 0
+	if v, ok := args["x"].(int); ok {
+		x = v
+	}
+	if v, ok := args["y"].(int); ok {
+		y = v
+	}
+	if v, ok := args["z"].(int); ok {
+		z = v
 	}
 
-	switch req.Type {
+	switch structureType {
 	case "house":
-		return buildHouse(req)
+		b.buildHouse(x, y, z, size)
 	case "tower":
-		return buildTower(req)
+		b.buildTower(x, y, z, size)
 	case "circle":
-		return buildCircle(req)
+		b.buildCircle(x, y, z, size)
 	case "sphere":
-		return buildSphere(req)
+		b.buildSphere(x, y, z, size)
 	case "wall":
-		return buildWall(req)
+		b.buildWall(x, y, z, size)
 	case "floor":
-		return buildFloor(req)
+		b.buildFloor(x, y, z, size)
 	case "rect":
-		return buildRect(req)
+		b.buildRect(x, y, z, size)
 	default:
-		return nil, fmt.Errorf("不支持的建筑类型: %s", req.Type)
+		return "", fmt.Errorf("unknown structure type: %s", structureType)
 	}
+
+	return b.summary()
 }
 
-// buildHouse 小屋。
-func buildHouse(req BuildRequest) (*BuildResponse, error) {
-	if req.Width == 0 {
-		req.Width = 5
-	}
-	if req.Depth == 0 {
-		req.Depth = 5
-	}
-	if req.Height == 0 {
-		req.Height = 4
-	}
-	x1 := req.CenterX
-	x2 := req.CenterX + req.Width - 1
-	z1 := req.CenterZ
-	z2 := req.CenterZ + req.Depth - 1
-	y1 := req.CenterY
-	y2 := req.CenterY + req.Height - 1
-
-	var cmds []string
-	cmds = append(cmds, fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, y1, z1, x2, y1, z2, req.BlockName))
-	cmds = append(cmds, fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, y1, z1, x1, y2, z2, req.BlockName))
-	cmds = append(cmds, fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x2, y1, z1, x2, y2, z2, req.BlockName))
-	cmds = append(cmds, fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, y1, z1, x2, y2, z1, req.BlockName))
-	cmds = append(cmds, fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, y1, z2, x2, y2, z2, req.BlockName))
-
-	count := req.Width*req.Depth + 2*req.Height*(req.Width+req.Depth)
-
-	return &BuildResponse{
-		Commands:    cmds,
-		BlockCount:  count,
-		Description: fmt.Sprintf("小屋 %dx%dx%d", req.Width, req.Height, req.Depth),
-	}, nil
+func (b *Builder) add(x, y, z int, t string) {
+	b.blocks = append(b.blocks, Block{X: x, Y: y, Z: z, Type: t})
 }
 
-// buildTower 高塔。
-func buildTower(req BuildRequest) (*BuildResponse, error) {
-	if req.Width == 0 {
-		req.Width = 3
-	}
-	if req.Depth == 0 {
-		req.Depth = 3
-	}
-	if req.Height == 0 {
-		req.Height = 20
-	}
-	x1 := req.CenterX
-	x2 := req.CenterX + req.Width - 1
-	z1 := req.CenterZ
-	z2 := req.CenterZ + req.Depth - 1
-
-	cmd := fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, req.CenterY, z1, x2, req.CenterY+req.Height-1, z2, req.BlockName)
-
-	count := req.Width * req.Depth * req.Height
-
-	return &BuildResponse{
-		Commands:    []string{cmd},
-		BlockCount:  count,
-		Description: fmt.Sprintf("高塔 %dx%dx%d", req.Width, req.Height, req.Depth),
-	}, nil
-}
-
-// buildCircle 圆形平台。
-func buildCircle(req BuildRequest) (*BuildResponse, error) {
-	if req.Radius == 0 {
-		req.Radius = 5
-	}
-	r := float64(req.Radius)
-	var cmds []string
-	count := 0
-	// 用 setblock 一个一个放
-	for dx := -req.Radius; dx <= req.Radius; dx++ {
-		for dz := -req.Radius; dz <= req.Radius; dz++ {
-			d := math.Sqrt(float64(dx*dx) + float64(dz*dz))
-			if d <= r+0.5 {
-				x := req.CenterX + dx
-				z := req.CenterZ + dz
-				cmds = append(cmds, fmt.Sprintf("setblock %d %d %d %s",
-					x, req.CenterY, z, req.BlockName))
-				count++
-			}
+func (b *Builder) buildHouse(x, y, z, size int) {
+	// 地板
+	for dx := 0; dx < size; dx++ {
+		for dz := 0; dz < size; dz++ {
+			b.add(x+dx, y, z+dz, "stone")
 		}
 	}
-	return &BuildResponse{
-		Commands:    cmds,
-		BlockCount:  count,
-		Description: fmt.Sprintf("圆形平台 半径=%d", req.Radius),
-	}, nil
+	// 墙
+	for h := 1; h < size/2; h++ {
+		for dx := 0; dx < size; dx++ {
+			b.add(x+dx, y+h, z, "oak_log")
+			b.add(x+dx, y+h, z+size-1, "oak_log")
+		}
+		for dz := 0; dz < size; dz++ {
+			b.add(x, y+h, z+dz, "oak_log")
+			b.add(x+size-1, y+h, z+dz, "oak_log")
+		}
+	}
+	// 屋顶
+	for h := 0; h < size/2; h++ {
+		inset := h
+		for dx := inset; dx < size-inset; dx++ {
+			b.add(x+dx, y+size/2+h, z+inset, "oak_planks")
+			b.add(x+dx, y+size/2+h, z+size-1-inset, "oak_planks")
+		}
+		for dz := inset; dz < size-inset; dz++ {
+			b.add(x+inset, y+size/2+h, z+dz, "oak_planks")
+			b.add(x+size-1-inset, y+size/2+h, z+dz, "oak_planks")
+		}
+	}
+	// 门
+	b.add(x+size/2, y+1, z, "air")
+	b.add(x+size/2, y+2, z, "air")
+	// 窗
+	for h := 2; h < size/2-1; h++ {
+		b.add(x+size/4, y+h, z, "glass")
+		b.add(x+size*3/4, y+h, z, "glass")
+	}
 }
 
-// buildSphere 球体。
-func buildSphere(req BuildRequest) (*BuildResponse, error) {
-	if req.Radius == 0 {
-		req.Radius = 5
-	}
-	r := float64(req.Radius)
-	var cmds []string
-	count := 0
-	for dx := -req.Radius; dx <= req.Radius; dx++ {
-		for dy := -req.Radius; dy <= req.Radius; dy++ {
-			for dz := -req.Radius; dz <= req.Radius; dz++ {
-				d := math.Sqrt(float64(dx*dx) + float64(dy*dy) + float64(dz*dz))
-				if d <= r+0.5 {
-					x := req.CenterX + dx
-					y := req.CenterY + dy
-					z := req.CenterZ + dz
-					cmds = append(cmds, fmt.Sprintf("setblock %d %d %d %s",
-						x, y, z, req.BlockName))
-					count++
+func (b *Builder) buildTower(x, y, z, size int) {
+	height := size * 3
+	for h := 0; h < height; h++ {
+		for dx := 0; dx < size; dx++ {
+			for dz := 0; dz < size; dz++ {
+				isEdge := dx == 0 || dx == size-1 || dz == 0 || dz == size-1
+				if isEdge {
+					b.add(x+dx, y+h, z+dz, "stone_bricks")
+				} else if h == 0 {
+					b.add(x+dx, y+h, z+dz, "stone_bricks")
 				}
 			}
 		}
 	}
-	return &BuildResponse{
-		Commands:    cmds,
-		BlockCount:  count,
-		Description: fmt.Sprintf("球体 半径=%d", req.Radius),
-	}, nil
 }
 
-// buildWall 墙。
-func buildWall(req BuildRequest) (*BuildResponse, error) {
-	if req.Width == 0 {
-		req.Width = 10
-	}
-	if req.Height == 0 {
-		req.Height = 5
-	}
-	x1 := req.CenterX
-	x2 := req.CenterX + req.Width - 1
-	z := req.CenterZ
-	cmd := fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, req.CenterY, z, x2, req.CenterY+req.Height-1, z, req.BlockName)
-
-	count := req.Width * req.Height
-
-	return &BuildResponse{
-		Commands:    []string{cmd},
-		BlockCount:  count,
-		Description: fmt.Sprintf("墙 %dx%d", req.Width, req.Height),
-	}, nil
-}
-
-// buildFloor 地板。
-func buildFloor(req BuildRequest) (*BuildResponse, error) {
-	if req.Width == 0 {
-		req.Width = 10
-	}
-	if req.Depth == 0 {
-		req.Depth = 10
-	}
-	x1 := req.CenterX
-	x2 := req.CenterX + req.Width - 1
-	z1 := req.CenterZ
-	z2 := req.CenterZ + req.Depth - 1
-	cmd := fmt.Sprintf("fill %d %d %d %d %d %d %s",
-		x1, req.CenterY, z1, x2, req.CenterY, z2, req.BlockName)
-
-	count := req.Width * req.Depth
-
-	return &BuildResponse{
-		Commands:    []string{cmd},
-		BlockCount:  count,
-		Description: fmt.Sprintf("地板 %dx%d", req.Width, req.Depth),
-	}, nil
-}
-
-// buildRect 矩形区域。
-func buildRect(req BuildRequest) (*BuildResponse, error) {
-	if req.Width == 0 {
-		req.Width = 10
-	}
-	if req.Height == 0 {
-		req.Height = 5
-	}
-	if req.Depth == 0 {
-		req.Depth = 10
-	}
-	x1 := req.CenterX
-	x2 := req.CenterX + req.Width - 1
-	y1 := req.CenterY
-	y2 := req.CenterY + req.Height - 1
-	z1 := req.CenterZ
-	z2 := req.CenterZ + req.Depth - 1
-
-	cmd := fmt.Sprintf("fill %d %d %d %d %d %d %s", x1, y1, z1, x2, y2, z2, req.BlockName)
-
-	count := req.Width * req.Height * req.Depth
-
-	return &BuildResponse{
-		Commands:    []string{cmd},
-		BlockCount:  count,
-		Description: fmt.Sprintf("矩形 %dx%dx%d", req.Width, req.Height, req.Depth),
-	}, nil
-}
-
-// ParseRequest 从指令字符串解析建筑请求。
-// 格式: "type:house width:5 height:4 depth:5 block:oak_planks center:0,64,0"
-func ParseRequest(s string) (BuildRequest, error) {
-	req := BuildRequest{}
-	parts := strings.Fields(s)
-	for _, p := range parts {
-		kv := strings.SplitN(p, ":", 2)
-		if len(kv) != 2 {
-			continue
-		}
-		k, v := kv[0], kv[1]
-		switch k {
-		case "type":
-			req.Type = v
-		case "block":
-			req.BlockName = v
-		case "width", "w":
-			n, _ := strconv.Atoi(v)
-			req.Width = n
-		case "height", "h":
-			n, _ := strconv.Atoi(v)
-			req.Height = n
-		case "depth", "d":
-			n, _ := strconv.Atoi(v)
-			req.Depth = n
-		case "radius", "r":
-			n, _ := strconv.Atoi(v)
-			req.Radius = n
-		case "center":
-			xyz := strings.Split(v, ",")
-			if len(xyz) == 3 {
-				req.CenterX, _ = strconv.Atoi(xyz[0])
-				req.CenterY, _ = strconv.Atoi(xyz[1])
-				req.CenterZ, _ = strconv.Atoi(xyz[2])
+func (b *Builder) buildCircle(x, y, z, radius int) {
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			distSq := dx*dx + dz*dz
+			if distSq <= radius*radius {
+				b.add(x+dx, y, z+dz, "stone")
 			}
 		}
 	}
-	if req.Type == "" {
-		return req, fmt.Errorf("未指定 type")
+}
+
+func (b *Builder) buildSphere(x, y, z, radius int) {
+	for dx := -radius; dx <= radius; dx++ {
+		for dy := -radius; dy <= radius; dy++ {
+			for dz := -radius; dz <= radius; dz++ {
+				distSq := dx*dx + dy*dy + dz*dz
+				if distSq <= radius*radius && distSq >= (radius-1)*(radius-1) {
+					b.add(x+dx, y+dy+radius, z+dz, "glass")
+				}
+			}
+		}
 	}
-	return req, nil
+}
+
+func (b *Builder) buildWall(x, y, z, size int) {
+	for h := 0; h < size; h++ {
+		for dx := 0; dx < size; dx++ {
+			b.add(x+dx, y+h, z, "cobblestone")
+		}
+	}
+}
+
+func (b *Builder) buildFloor(x, y, z, size int) {
+	for dx := 0; dx < size; dx++ {
+		for dz := 0; dz < size; dz++ {
+			b.add(x+dx, y, z+dz, "oak_planks")
+		}
+	}
+}
+
+func (b *Builder) buildRect(x, y, z, size int) {
+	for dx := 0; dx < size; dx++ {
+		for dz := 0; dz < size; dz++ {
+			for h := 0; h < size/2; h++ {
+				if dx == 0 || dx == size-1 || dz == 0 || dz == size-1 || h == 0 {
+					b.add(x+dx, y+h, z+dz, "bricks")
+				}
+			}
+		}
+	}
+}
+
+func (b *Builder) summary() (string, error) {
+	if len(b.blocks) == 0 {
+		return "", fmt.Errorf("no blocks generated")
+	}
+
+	// 统计每种块
+	counts := make(map[string]int)
+	for _, blk := range b.blocks {
+		counts[blk.Type]++
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("✅ 生成 %d 个块（%d 种）\n\n", len(b.blocks), len(counts)))
+	for t, c := range counts {
+		sb.WriteString(fmt.Sprintf("  %s: %d\n", t, c))
+	}
+	return sb.String(), nil
 }
