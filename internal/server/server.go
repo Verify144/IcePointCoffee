@@ -36,10 +36,17 @@ type Server struct {
 	maxEvents int
 }
 
-// NewServer 创建服务器
+// NewServer 创建服务器（使用内存存储）
 func NewServer(port int) *Server {
-	taskStore := task.NewListStore()
-	taskMgr := task.NewManager(taskStore, 4)
+	return NewServerWithStore(port, nil)
+}
+
+// NewServerWithStore 创建服务器，使用指定的 task store（nil=内存存储）
+func NewServerWithStore(port int, store task.Store) *Server {
+	if store == nil {
+		store = task.NewListStore()
+	}
+	taskMgr := task.NewManager(store, 4)
 
 	s := &Server{
 		port:        port,
