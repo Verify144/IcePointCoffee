@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Verify144/IcePointCoffee/internal/auth"
 	"github.com/Verify144/IcePointCoffee/internal/template"
 )
 
@@ -26,7 +25,7 @@ func (s *Server) templateHandlers() http.Handler {
 }
 
 // handleTemplatesList 列出模板（GET）
-// POST 创建模板（需 auth）
+// POST 创建模板（公开）
 func (s *Server) handleTemplatesList(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -44,9 +43,6 @@ func (s *Server) templatesList(w http.ResponseWriter, r *http.Request) {
 		Category: q.Get("category"),
 		Search:   q.Get("q"),
 		SortBy:   q.Get("sort"),
-	}
-	if userID := q.Get("user_id"); userID != "" {
-		filter.UserID = userID
 	}
 	if public := q.Get("public"); public == "true" {
 		p := true
@@ -81,22 +77,6 @@ func (s *Server) templatesList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) templatesCreate(w http.ResponseWriter, r *http.Request) {
-	if s.authMiddleware == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "auth not enabled", "")
-		return
-	}
-	// 手动校验 token（POST /templates 需要登录）
-	token := extractBearerToken(r)
-	if token == "" {
-		writeJSONError(w, http.StatusUnauthorized, "missing token", "")
-		return
-	}
-	user, _, err := s.authStore.ValidateToken(token)
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "invalid token", err.Error())
-		return
-	}
-
 	var req struct {
 		Name         string                 `json:"name"`
 		Description  string                 `json:"description"`
@@ -118,7 +98,6 @@ func (s *Server) templatesCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tpl := &template.Template{
-		UserID:       user.ID,
 		Name:         req.Name,
 		Description:  req.Description,
 		Category:     req.Category,
@@ -186,22 +165,7 @@ func (s *Server) templatesGet(w http.ResponseWriter, r *http.Request, id string)
 }
 
 func (s *Server) templatesDelete(w http.ResponseWriter, r *http.Request, id string) {
-	if s.authMiddleware == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "auth not enabled", "")
-		return
-	}
-	token := extractBearerToken(r)
-	if token == "" {
-		writeJSONError(w, http.StatusUnauthorized, "missing token", "")
-		return
-	}
-	user, _, err := s.authStore.ValidateToken(token)
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "invalid token", err.Error())
-		return
-	}
-
-	if err := s.templateStore.Delete(id, user.ID); err != nil {
+	if err := s.templateStore.Delete(id); err != nil {
 		writeJSONError(w, http.StatusNotFound, "delete failed", err.Error())
 		return
 	}
@@ -233,24 +197,3 @@ func (s *Server) templatesLike(w http.ResponseWriter, r *http.Request, id string
 }
 
 // ==== helpers ====
-
-func extractBearerToken(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
-	}
-	if token := r.Header.Get("X-API-Token"); token != "" {
-		return token
-	}
-	return ""
-}
-
-// authUser 尝试从 Authorization 头中获取用户
-func (s *Server) authUser(r *http.Request) *auth.User {
-	token := extractBearerToken(r)
-	if token == "" || s.authStore == nil {
-		return nil
-	}
-	user, _, _ := s.authStore.ValidateToken(token)
-	return user
-}

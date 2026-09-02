@@ -36,13 +36,7 @@ func (s *Server) handleCronsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cronsList(w http.ResponseWriter, r *http.Request) {
-	user := s.authUser(r)
-	if user == nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "auth required")
-		return
-	}
-
-	jobs, err := s.cronStore.List(user.ID, false)
+	jobs, err := s.cronStore.List(false)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "list failed", err.Error())
 		return
@@ -54,12 +48,6 @@ func (s *Server) cronsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cronsCreate(w http.ResponseWriter, r *http.Request) {
-	user := s.authUser(r)
-	if user == nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "auth required")
-		return
-	}
-
 	var req struct {
 		Name     string                 `json:"name"`
 		CronExpr string                 `json:"cron_expr"`
@@ -82,7 +70,6 @@ func (s *Server) cronsCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := &cron.CronJob{
-		UserID:    user.ID,
 		Name:      req.Name,
 		CronExpr:  req.CronExpr,
 		TaskType:  req.TaskType,
@@ -137,30 +124,16 @@ func (s *Server) handleCronsItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cronsGet(w http.ResponseWriter, r *http.Request, id string) {
-	user := s.authUser(r)
-	if user == nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "")
-		return
-	}
 	job, err := s.cronStore.Get(id)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found", err.Error())
-		return
-	}
-	if job.UserID != user.ID {
-		writeJSONError(w, http.StatusForbidden, "forbidden", "not owner")
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
 }
 
 func (s *Server) cronsDelete(w http.ResponseWriter, r *http.Request, id string) {
-	user := s.authUser(r)
-	if user == nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "")
-		return
-	}
-	if err := s.cronStore.Delete(id, user.ID); err != nil {
+	if err := s.cronStore.Delete(id); err != nil {
 		writeJSONError(w, http.StatusNotFound, "delete failed", err.Error())
 		return
 	}
@@ -168,18 +141,9 @@ func (s *Server) cronsDelete(w http.ResponseWriter, r *http.Request, id string) 
 }
 
 func (s *Server) cronsSetEnabled(w http.ResponseWriter, r *http.Request, id string, enabled bool) {
-	user := s.authUser(r)
-	if user == nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "")
-		return
-	}
 	job, err := s.cronStore.Get(id)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found", err.Error())
-		return
-	}
-	if job.UserID != user.ID {
-		writeJSONError(w, http.StatusForbidden, "forbidden", "not owner")
 		return
 	}
 	job.Enabled = enabled
@@ -191,18 +155,9 @@ func (s *Server) cronsSetEnabled(w http.ResponseWriter, r *http.Request, id stri
 }
 
 func (s *Server) cronsTrigger(w http.ResponseWriter, r *http.Request, id string) {
-	user := s.authUser(r)
-	if user == nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "")
-		return
-	}
 	job, err := s.cronStore.Get(id)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found", err.Error())
-		return
-	}
-	if job.UserID != user.ID {
-		writeJSONError(w, http.StatusForbidden, "forbidden", "not owner")
 		return
 	}
 

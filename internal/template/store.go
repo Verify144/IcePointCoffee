@@ -13,7 +13,6 @@ import (
 // Template 建筑模板
 type Template struct {
 	ID           string                 `json:"id"`
-	UserID       string                 `json:"user_id,omitempty"`
 	Name         string                 `json:"name"`
 	Description  string                 `json:"description,omitempty"`
 	Category     string                 `json:"category"`
@@ -45,9 +44,9 @@ func (s *Store) Create(t *Template) error {
 	blocksJSON, _ := json.Marshal(t.Blocks)
 
 	_, err := s.db.ExecContext(context.Background(),
-		`INSERT INTO build_templates (id, user_id, name, description, category, params_schema, blocks, is_public, likes, uses, created_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-		t.ID, t.UserID, t.Name, t.Description, t.Category,
+		`INSERT INTO build_templates (id, name, description, category, params_schema, blocks, is_public, likes, uses, created_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.Name, t.Description, t.Category,
 		string(paramsJSON), string(blocksJSON),
 		boolToInt(t.IsPublic), t.Likes, t.Uses, t.CreatedAt)
 	return err
@@ -60,9 +59,9 @@ func (s *Store) Get(id string) (*Template, error) {
 	var updatedAt sql.NullTime
 
 	err := s.db.QueryRowContext(context.Background(),
-		`SELECT id, user_id, name, description, category, params_schema, blocks, is_public, likes, uses, created_at, updated_at
+		`SELECT id, name, description, category, params_schema, blocks, is_public, likes, uses, created_at, updated_at
 		 FROM build_templates WHERE id=?`, id).
-		Scan(&t.ID, &t.UserID, &t.Name, &t.Description, &t.Category,
+		Scan(&t.ID, &t.Name, &t.Description, &t.Category,
 			&paramsJSON, &blocksJSON, &t.IsPublic, &t.Likes, &t.Uses, &t.CreatedAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("template not found")
@@ -82,7 +81,6 @@ func (s *Store) Get(id string) (*Template, error) {
 
 // ListFilter 列表过滤条件
 type ListFilter struct {
-	UserID    string
 	Category  string
 	Public    *bool // nil=全部，true=仅公开，false=仅私有
 	Search    string // 名称/描述搜索
@@ -93,14 +91,10 @@ type ListFilter struct {
 
 // List 列出模板
 func (s *Store) List(filter ListFilter) ([]*Template, error) {
-	query := `SELECT id, user_id, name, description, category, params_schema, blocks, is_public, likes, uses, created_at, updated_at
+	query := `SELECT id, name, description, category, params_schema, blocks, is_public, likes, uses, created_at, updated_at
 	          FROM build_templates WHERE 1=1`
 	var args []interface{}
 
-	if filter.UserID != "" {
-		query += " AND user_id=?"
-		args = append(args, filter.UserID)
-	}
 	if filter.Category != "" {
 		query += " AND category=?"
 		args = append(args, filter.Category)
@@ -146,7 +140,7 @@ func (s *Store) List(filter ListFilter) ([]*Template, error) {
 		var t Template
 		var paramsJSON, blocksJSON string
 		var updatedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.Description, &t.Category,
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Category,
 			&paramsJSON, &blocksJSON, &t.IsPublic, &t.Likes, &t.Uses, &t.CreatedAt, &updatedAt); err != nil {
 			return nil, err
 		}
@@ -174,9 +168,9 @@ func (s *Store) Update(t *Template) error {
 }
 
 // Delete 删除模板
-func (s *Store) Delete(id, userID string) error {
+func (s *Store) Delete(id string) error {
 	res, err := s.db.ExecContext(context.Background(),
-		`DELETE FROM build_templates WHERE id=? AND user_id=?`, id, userID)
+		`DELETE FROM build_templates WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
@@ -258,7 +252,6 @@ func getPublicTemplates() []*Template {
 	return []*Template{
 		{
 			ID:          "tpl_house_001",
-			UserID:      "system",
 			Name:        "简约房屋",
 			Description: "基础的 10x10 单层房屋，带门和窗户",
 			Category:    "residential",
@@ -280,7 +273,6 @@ func getPublicTemplates() []*Template {
 		},
 		{
 			ID:          "tpl_tower_001",
-			UserID:      "system",
 			Name:        "圆形塔楼",
 			Description: "逐层向上的圆柱形塔楼",
 			Category:    "structural",
@@ -300,7 +292,6 @@ func getPublicTemplates() []*Template {
 		},
 		{
 			ID:          "tpl_fountain_001",
-			UserID:      "system",
 			Name:        "中央喷泉",
 			Description: "带有水池和中心柱的喷泉",
 			Category:    "decoration",
@@ -319,7 +310,6 @@ func getPublicTemplates() []*Template {
 		},
 		{
 			ID:          "tpl_bridge_001",
-			UserID:      "system",
 			Name:        "石桥",
 			Description: "跨越河流或峡谷的石桥",
 			Category:    "infrastructure",
@@ -339,7 +329,6 @@ func getPublicTemplates() []*Template {
 		},
 		{
 			ID:          "tpl_castle_001",
-			UserID:      "system",
 			Name:        "城堡",
 			Description: "带围墙和塔楼的完整城堡",
 			Category:    "residential",

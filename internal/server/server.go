@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Verify144/IcePointCoffee/internal/ai"
-	"github.com/Verify144/IcePointCoffee/internal/auth"
 	"github.com/Verify144/IcePointCoffee/internal/builder"
 	"github.com/Verify144/IcePointCoffee/internal/cron"
 	"github.com/Verify144/IcePointCoffee/internal/metrics"
@@ -37,11 +36,6 @@ type Server struct {
 	taskManager *task.Manager
 	events    []Event
 	maxEvents int
-
-	// 认证
-	authStore      *auth.Store
-	authMiddleware *auth.AuthMiddleware
-	authHandlers   *auth.Handlers
 
 	// 模板
 	templateStore *template.Store
@@ -97,11 +91,6 @@ func NewServerWithDB(port int, db *sql.DB) *Server {
 }
 
 func (s *Server) initFullFeatures(db *sql.DB) {
-	// 认证
-	s.authStore = auth.NewStore(db)
-	s.authMiddleware = auth.NewAuthMiddleware(s.authStore)
-	s.authHandlers = auth.NewHandlers(s.authStore)
-
 	// 模板
 	s.templateStore = template.NewStore(db)
 	s.templateStore.SeedPublicTemplates() // 幂等初始化公开模板
@@ -112,11 +101,9 @@ func (s *Server) initFullFeatures(db *sql.DB) {
 	s.cronSched.Start()
 }
 
-// authTokenHandlers 返回 auth token 子路由 mux
+// authTokenHandlers 占位（已删除认证）
 func (s *Server) authTokenHandlers() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.authHandlers.HandleDeleteToken)
-	return mux
+	return http.NewServeMux()
 }
 
 func (s *Server) registerHandlers() {
@@ -187,25 +174,8 @@ func (s *Server) SetupRoutes() {
 	api.HandleFunc("/status", s.handleStatus)
 	s.mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api))
 
-	// 认证/模板/Cron 路由（仅在 initFullFeatures 之后可用）
-	if s.authHandlers != nil && s.authMiddleware != nil {
-		// 公开（无需 token）
-		api.HandleFunc("/auth/register", s.authHandlers.HandleRegister)
-		api.HandleFunc("/auth/login", s.authHandlers.HandleLogin)
-		// 需要 token
-		api.Handle("/auth/me", s.authMiddleware.RequireAuth(http.HandlerFunc(s.authHandlers.HandleMe)))
-		api.Handle("/auth/tokens", s.authMiddleware.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				s.authHandlers.HandleListTokens(w, r)
-			case http.MethodPost:
-				s.authHandlers.HandleCreateToken(w, r)
-			default:
-				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			}
-		})))
-		api.Handle("/auth/tokens/", s.authMiddleware.RequireAuth(http.StripPrefix("/auth/tokens", s.authTokenHandlers())))
-	}
+	// 模板/Cron 路由（仅在 initFullFeatures 之后可用）
+	// 认证已删除，冰点咖啡作为本地工具不需要用户系统
 	if s.templateStore != nil {
 		s.handleTemplateRoutes(api)
 	}

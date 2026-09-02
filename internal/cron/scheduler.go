@@ -18,7 +18,6 @@ import (
 // CronJob 定时任务
 type CronJob struct {
 	ID            string     `json:"id"`
-	UserID        string     `json:"user_id"`
 	Name          string     `json:"name"`
 	CronExpr      string     `json:"cron_expr"` // 标准 cron 表达式
 	TaskType      string     `json:"task_type"`  // 对应 task handler 类型
@@ -48,9 +47,9 @@ func (s *Store) Create(j *CronJob) error {
 	payloadJSON, _ := json.Marshal(j.Payload)
 
 	_, err := s.db.ExecContext(context.Background(),
-		`INSERT INTO cron_jobs (id, user_id, name, cron_expr, task_type, payload, enabled, created_at)
-		 VALUES (?,?,?,?,?,?,?,?)`,
-		j.ID, j.UserID, j.Name, j.CronExpr, j.TaskType, string(payloadJSON), boolToInt(j.Enabled), j.CreatedAt)
+		`INSERT INTO cron_jobs (id, name, cron_expr, task_type, payload, enabled, created_at)
+		 VALUES (?,?,?,?,?,?,?)`,
+		j.ID, j.Name, j.CronExpr, j.TaskType, string(payloadJSON), boolToInt(j.Enabled), j.CreatedAt)
 	return err
 }
 
@@ -62,9 +61,9 @@ func (s *Store) Get(id string) (*CronJob, error) {
 	var lastStatus sql.NullString
 
 	err := s.db.QueryRowContext(context.Background(),
-		`SELECT id, user_id, name, cron_expr, task_type, payload, enabled, last_run_at, last_run_status, next_run_at, created_at
+		`SELECT id, name, cron_expr, task_type, payload, enabled, last_run_at, last_run_status, next_run_at, created_at
 		 FROM cron_jobs WHERE id=?`, id).
-		Scan(&j.ID, &j.UserID, &j.Name, &j.CronExpr, &j.TaskType, &payloadJSON,
+		Scan(&j.ID, &j.Name, &j.CronExpr, &j.TaskType, &payloadJSON,
 			&j.Enabled, &lastRunAt, &lastStatus, &nextRunAt, &j.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("cron job not found")
@@ -88,21 +87,16 @@ func (s *Store) Get(id string) (*CronJob, error) {
 }
 
 // List 列出 jobs
-func (s *Store) List(userID string, enabledOnly bool) ([]*CronJob, error) {
-	query := `SELECT id, user_id, name, cron_expr, task_type, payload, enabled, last_run_at, last_run_status, next_run_at, created_at
+func (s *Store) List(enabledOnly bool) ([]*CronJob, error) {
+	query := `SELECT id, name, cron_expr, task_type, payload, enabled, last_run_at, last_run_status, next_run_at, created_at
 	          FROM cron_jobs WHERE 1=1`
-	var args []interface{}
 
-	if userID != "" {
-		query += " AND user_id=?"
-		args = append(args, userID)
-	}
 	if enabledOnly {
 		query += " AND enabled=1"
 	}
 	query += " ORDER BY created_at DESC"
 
-	rows, err := s.db.QueryContext(context.Background(), query, args...)
+	rows, err := s.db.QueryContext(context.Background(), query)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +108,7 @@ func (s *Store) List(userID string, enabledOnly bool) ([]*CronJob, error) {
 		var payloadJSON string
 		var lastRunAt, nextRunAt sql.NullTime
 		var lastStatus sql.NullString
-		if err := rows.Scan(&j.ID, &j.UserID, &j.Name, &j.CronExpr, &j.TaskType, &payloadJSON,
+		if err := rows.Scan(&j.ID, &j.Name, &j.CronExpr, &j.TaskType, &payloadJSON,
 			&j.Enabled, &lastRunAt, &lastStatus, &nextRunAt, &j.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -145,9 +139,9 @@ func (s *Store) Update(j *CronJob) error {
 }
 
 // Delete 删除 job
-func (s *Store) Delete(id, userID string) error {
+func (s *Store) Delete(id string) error {
 	res, err := s.db.ExecContext(context.Background(),
-		`DELETE FROM cron_jobs WHERE id=? AND user_id=?`, id, userID)
+		`DELETE FROM cron_jobs WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
@@ -170,7 +164,7 @@ func (s *Store) UpdateRunStatus(id string, status string, nextRun *time.Time) er
 // GetDueJobs 获取即将到期的 jobs
 func (s *Store) GetDueJobs(before time.Time) ([]*CronJob, error) {
 	rows, err := s.db.QueryContext(context.Background(),
-		`SELECT id, user_id, name, cron_expr, task_type, payload, enabled, last_run_at, last_run_status, next_run_at, created_at
+		`SELECT id, name, cron_expr, task_type, payload, enabled, last_run_at, last_run_status, next_run_at, created_at
 		 FROM cron_jobs WHERE enabled=1 AND (next_run_at IS NULL OR next_run_at<=?)
 		 ORDER BY next_run_at ASC LIMIT 100`, before)
 	if err != nil {
@@ -184,7 +178,7 @@ func (s *Store) GetDueJobs(before time.Time) ([]*CronJob, error) {
 		var payloadJSON string
 		var lastRunAt, nextRunAt sql.NullTime
 		var lastStatus sql.NullString
-		rows.Scan(&j.ID, &j.UserID, &j.Name, &j.CronExpr, &j.TaskType, &payloadJSON,
+		rows.Scan(&j.ID, &j.Name, &j.CronExpr, &j.TaskType, &payloadJSON,
 			&j.Enabled, &lastRunAt, &lastStatus, &nextRunAt, &j.CreatedAt)
 		json.Unmarshal([]byte(payloadJSON), &j.Payload)
 		if lastRunAt.Valid {
@@ -290,7 +284,6 @@ func (s *Scheduler) executeJob(ctx context.Context, job *CronJob) {
 
 	// 构造任务
 	t := task.NewTask(job.TaskType, job.Payload)
-	t.UserID = job.UserID
 
 	// 提交到任务管理器
 	if err := s.taskManager.Submit(t); err != nil {

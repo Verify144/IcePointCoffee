@@ -68,29 +68,6 @@ func (d *DB) migrate() error {
 		loaded_at DATETIME
 	);
 
-	CREATE TABLE IF NOT EXISTS users (
-		id TEXT PRIMARY KEY,
-		username TEXT NOT NULL UNIQUE,
-		password_hash TEXT NOT NULL,
-		role TEXT NOT NULL DEFAULT 'user',
-		created_at DATETIME NOT NULL,
-		updated_at DATETIME
-	);
-	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-
-	CREATE TABLE IF NOT EXISTS api_tokens (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		name TEXT NOT NULL,
-		token_hash TEXT NOT NULL UNIQUE,
-		scopes TEXT NOT NULL DEFAULT '[]',
-		expires_at DATETIME,
-		last_used_at DATETIME,
-		created_at DATETIME NOT NULL
-	);
-	CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON api_tokens(user_id);
-	CREATE INDEX IF NOT EXISTS idx_tokens_hash ON api_tokens(token_hash);
-
 	CREATE TABLE IF NOT EXISTS build_templates (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,

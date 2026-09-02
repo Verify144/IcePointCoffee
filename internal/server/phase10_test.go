@@ -19,71 +19,13 @@ func newServerDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 
 	schema := `
-	CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', created_at DATETIME NOT NULL, updated_at DATETIME);
-	CREATE TABLE api_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, scopes TEXT NOT NULL DEFAULT '[]', expires_at DATETIME, last_used_at DATETIME, created_at DATETIME NOT NULL);
-	CREATE TABLE build_templates (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, category TEXT NOT NULL DEFAULT 'custom', params_schema TEXT NOT NULL DEFAULT '{}', blocks TEXT NOT NULL DEFAULT '{}', is_public INTEGER NOT NULL DEFAULT 0, likes INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, updated_at DATETIME);
-	CREATE TABLE cron_jobs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, cron_expr TEXT NOT NULL, task_type TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', enabled INTEGER NOT NULL DEFAULT 1, last_run_at DATETIME, last_run_status TEXT, next_run_at DATETIME, created_at DATETIME NOT NULL);
+	CREATE TABLE build_templates (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, category TEXT NOT NULL DEFAULT 'custom', params_schema TEXT NOT NULL DEFAULT '{}', blocks TEXT NOT NULL DEFAULT '{}', is_public INTEGER NOT NULL DEFAULT 0, likes INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, updated_at DATETIME);
+	CREATE TABLE cron_jobs (id TEXT PRIMARY KEY, name TEXT NOT NULL, cron_expr TEXT NOT NULL, task_type TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', enabled INTEGER NOT NULL DEFAULT 1, last_run_at DATETIME, last_run_status TEXT, next_run_at DATETIME, created_at DATETIME NOT NULL);
 	`
 	db.Exec(schema)
 	return db
 }
 
-func TestPhase10_AuthFlow(t *testing.T) {
-	db := newServerDB(t)
-	defer db.Close()
-
-	s := NewServerWithDB(8080, db)
-
-	// 1. 注册
-	body, _ := json.Marshal(map[string]string{"username": "alice", "password": "secret123"})
-	req := httptest.NewRequest("POST", "/api/v1/auth/register", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("Register: expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	// 2. 登录
-	req = httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec = httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Login: expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var loginResp struct {
-		Token string `json:"token"`
-		User  struct {
-			ID string `json:"id"`
-		} `json:"user"`
-	}
-	json.Unmarshal(rec.Body.Bytes(), &loginResp)
-	if loginResp.Token == "" {
-		t.Fatal("Token should be set")
-	}
-	if len(loginResp.Token) != 64 {
-		t.Errorf("Token should be 64 chars, got %d", len(loginResp.Token))
-	}
-
-	// 3. /me 需 token
-	req = httptest.NewRequest("GET", "/api/v1/auth/me", nil)
-	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
-	rec = httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Me: expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	// 4. /me 无 token 应 401
-	req = httptest.NewRequest("GET", "/api/v1/auth/me", nil)
-	rec = httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("Me without token: expected 401, got %d", rec.Code)
-	}
-}
 
 func TestPhase10_Templates(t *testing.T) {
 	db := newServerDB(t)
@@ -136,26 +78,7 @@ func TestPhase10_CronFlow(t *testing.T) {
 
 	s := NewServerWithDB(8080, db)
 
-	// 1. 注册获取 token
-	body, _ := json.Marshal(map[string]string{"username": "bob", "password": "secret123"})
-	req := httptest.NewRequest("POST", "/api/v1/auth/register", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("Register: %d %s", rec.Code, rec.Body.String())
-	}
-
-	req = httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec = httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	var loginResp struct {
-		Token string `json:"token"`
-	}
-	json.Unmarshal(rec.Body.Bytes(), &loginResp)
-
-	// 2. 创建 cron job
+	// 1. 创建 cron job（无需认证）
 	cronBody, _ := json.Marshal(map[string]interface{}{
 		"name":      "test job",
 		"cron_expr": "0 0 * * *",
@@ -163,18 +86,16 @@ func TestPhase10_CronFlow(t *testing.T) {
 		"payload":   map[string]interface{}{"message": "hello"},
 		"enabled":   true,
 	})
-	req = httptest.NewRequest("POST", "/api/v1/crons", bytes.NewReader(cronBody))
+	req := httptest.NewRequest("POST", "/api/v1/crons", bytes.NewReader(cronBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
-	rec = httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("Create cron: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// 3. 列出 crons
+	// 2. 列出 crons
 	req = httptest.NewRequest("GET", "/api/v1/crons", nil)
-	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
 	rec = httptest.NewRecorder()
 	s.mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -187,14 +108,6 @@ func TestPhase10_CronFlow(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &listResp)
 	if listResp.Count != 1 {
 		t.Errorf("Expected 1 cron, got %d", listResp.Count)
-	}
-
-	// 4. 未认证列表应 401
-	req = httptest.NewRequest("GET", "/api/v1/crons", nil)
-	rec = httptest.NewRecorder()
-	s.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("Expected 401, got %d", rec.Code)
 	}
 }
 

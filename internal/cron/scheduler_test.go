@@ -16,7 +16,7 @@ func newCronDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 
 	schema := `
-	CREATE TABLE cron_jobs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, cron_expr TEXT NOT NULL, task_type TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', enabled INTEGER NOT NULL DEFAULT 1, last_run_at DATETIME, last_run_status TEXT, next_run_at DATETIME, created_at DATETIME NOT NULL);
+	CREATE TABLE cron_jobs (id TEXT PRIMARY KEY, name TEXT NOT NULL, cron_expr TEXT NOT NULL, task_type TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', enabled INTEGER NOT NULL DEFAULT 1, last_run_at DATETIME, last_run_status TEXT, next_run_at DATETIME, created_at DATETIME NOT NULL);
 	`
 	db.Exec(schema)
 	return db
@@ -29,7 +29,6 @@ func TestCronCreate(t *testing.T) {
 	store := NewStore(db)
 	job := &CronJob{
 		ID:        "test_job_1",
-		UserID:    "u1",
 		Name:      "Daily cleanup",
 		CronExpr:  "0 0 * * *",
 		TaskType:  "echo",
@@ -61,17 +60,16 @@ func TestCronList(t *testing.T) {
 	store := NewStore(db)
 	for i := 0; i < 3; i++ {
 		store.Create(&CronJob{
-			UserID: "u1", Name: "j", CronExpr: "* * * * *", TaskType: "echo",
 			Enabled: true, CreatedAt: time.Now(),
 		})
 	}
 
-	jobs, _ := store.List("u1", false)
+	jobs, _ := store.List(false)
 	if len(jobs) != 3 {
 		t.Errorf("Expected 3 jobs, got %d", len(jobs))
 	}
 
-	enabled, _ := store.List("", true)
+	enabled, _ := store.List(true)
 	if len(enabled) != 3 {
 		t.Errorf("Expected 3 enabled, got %d", len(enabled))
 	}
@@ -83,8 +81,7 @@ func TestCronDisable(t *testing.T) {
 
 	store := NewStore(db)
 	store.Create(&CronJob{
-		ID: "d1", UserID: "u1", Name: "d", CronExpr: "* * * * *", TaskType: "echo",
-		Enabled: true, CreatedAt: time.Now(),
+		ID: "d1", Enabled: true, CreatedAt: time.Now(),
 	})
 
 	// 禁用
@@ -93,7 +90,7 @@ func TestCronDisable(t *testing.T) {
 	store.Update(job)
 
 	// 只列出启用的应该看不到
-	jobs, _ := store.List("", true)
+	jobs, _ := store.List(true)
 	if len(jobs) != 0 {
 		t.Errorf("Expected 0 enabled jobs, got %d", len(jobs))
 	}
@@ -105,14 +102,13 @@ func TestCronDelete(t *testing.T) {
 
 	store := NewStore(db)
 	store.Create(&CronJob{
-		ID: "x1", UserID: "u1", Name: "x", CronExpr: "* * * * *", TaskType: "echo",
-		Enabled: true, CreatedAt: time.Now(),
+		ID: "x1", Enabled: true, CreatedAt: time.Now(),
 	})
 
-	if err := store.Delete("x1", "u1"); err != nil {
+	if err := store.Delete("x1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Delete("x1", "u1"); err == nil {
+	if err := store.Delete("x1"); err == nil {
 		t.Error("Should fail on second delete")
 	}
 }
@@ -124,7 +120,6 @@ func TestCronDue(t *testing.T) {
 	store := NewStore(db)
 	past := time.Now().Add(-1 * time.Hour)
 	store.Create(&CronJob{
-		ID: "due1", UserID: "u1", Name: "d", CronExpr: "* * * * *", TaskType: "echo",
 		Enabled: true, CreatedAt: time.Now(), NextRunAt: &past,
 	})
 

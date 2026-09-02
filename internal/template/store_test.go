@@ -16,8 +16,7 @@ func newTemplateDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 
 	schema := `
-	CREATE TABLE build_templates (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, category TEXT NOT NULL DEFAULT 'custom', params_schema TEXT NOT NULL DEFAULT '{}', blocks TEXT NOT NULL DEFAULT '{}', is_public INTEGER NOT NULL DEFAULT 0, likes INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, updated_at DATETIME);
-	CREATE INDEX idx_templates_user ON build_templates(user_id);
+	CREATE TABLE build_templates (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, category TEXT NOT NULL DEFAULT 'custom', params_schema TEXT NOT NULL DEFAULT '{}', blocks TEXT NOT NULL DEFAULT '{}', is_public INTEGER NOT NULL DEFAULT 0, likes INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, updated_at DATETIME);
 	CREATE INDEX idx_templates_category ON build_templates(category);
 	`
 	db.Exec(schema)
@@ -31,7 +30,6 @@ func TestTemplateCreateAndGet(t *testing.T) {
 	store := NewStore(db)
 	tpl := &Template{
 		ID:          "test_001",
-		UserID:      "u1",
 		Name:        "Test House",
 		Description: "A test house",
 		Category:    "residential",
@@ -67,7 +65,6 @@ func TestTemplateList(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		store.Create(&Template{
 			ID:          "tpl_" + string(rune('a'+i)),
-			UserID:      "u1",
 			Name:        "tpl",
 			Category:    "residential",
 			IsPublic:    true,
@@ -115,7 +112,7 @@ func TestTemplateLikes(t *testing.T) {
 	defer db.Close()
 
 	store := NewStore(db)
-	store.Create(&Template{ID: "like_t", UserID: "u1", Category: "x", CreatedAt: time.Now()})
+	store.Create(&Template{ID: "like_t", Category: "x", CreatedAt: time.Now()})
 
 	store.IncrementLikes("like_t")
 	store.IncrementLikes("like_t")
@@ -130,9 +127,9 @@ func TestTemplateDelete(t *testing.T) {
 	defer db.Close()
 
 	store := NewStore(db)
-	store.Create(&Template{ID: "del_t", UserID: "u1", Category: "x", CreatedAt: time.Now()})
+	store.Create(&Template{ID: "del_t", Category: "x", CreatedAt: time.Now()})
 
-	if err := store.Delete("del_t", "u1"); err != nil {
+	if err := store.Delete("del_t"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Get("del_t"); err == nil {
