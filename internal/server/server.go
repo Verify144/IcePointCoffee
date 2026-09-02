@@ -1,8 +1,8 @@
 package server
 
 import (
-	
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"github.com/Verify144/IcePointCoffee/internal/ai"
+	"github.com/Verify144/IcePointCoffee/internal/auth"
 	"github.com/Verify144/IcePointCoffee/internal/builder"
+	"github.com/Verify144/IcePointCoffee/internal/cron"
 	"github.com/Verify144/IcePointCoffee/internal/metrics"
 	"github.com/Verify144/IcePointCoffee/internal/task"
+	"github.com/Verify144/IcePointCoffee/internal/template"
 )
 
 // Server HTTP RPC 服务
@@ -35,12 +38,24 @@ type Server struct {
 	events    []Event
 	maxEvents int
 
+	// 认证
+	authStore      *auth.Store
+	authMiddleware *auth.AuthMiddleware
+	authHandlers   *auth.Handlers
+
+	// 模板
+	templateStore *template.Store
+
+	// Cron
+	cronStore *cron.Store
+	cronSched *cron.Scheduler
+
 	// 流式会话管理（用于 AI 流式取消）
 	streamCancels map[string]context.CancelFunc
 	streamMu      sync.RWMutex
 }
 
-// NewServer 创建服务器（使用内存存储）
+// NewServer 创建服务器（使用内存存储，无认证/模板/Cron）
 func NewServer(port int) *Server {
 	return NewServerWithStore(port, nil)
 }
@@ -65,15 +80,55 @@ func NewServerWithStore(port int, store task.Store) *Server {
 		streamCancels: make(map[string]context.CancelFunc),
 	}
 	taskMgr.Start()
+	s.SetupRoutes()
+	s.registerHandlers()
+	return s
+}
+
+// NewServerWithDB 创建带完整功能的服务器（认证+模板+Cron）
+func NewServerWithDB(port int, db *sql.DB) *Server {
+	s := NewServerWithStore(port, nil)
+	if db != nil {
+		s.initFullFeatures(db)
+		// 重新设置路由以包含 auth/templates/cron
+		s.SetupRoutes()
+	}
+	return s
+}
+
+func (s *Server) initFullFeatures(db *sql.DB) {
+	// 认证
+	s.authStore = auth.NewStore(db)
+	s.authMiddleware = auth.NewAuthMiddleware(s.authStore)
+	s.authHandlers = auth.NewHandlers(s.authStore)
+
+	// 模板
+	s.templateStore = template.NewStore(db)
+	s.templateStore.SeedPublicTemplates() // 幂等初始化公开模板
+
+	// Cron
+	s.cronStore = cron.NewStore(db)
+	s.cronSched = cron.NewScheduler(s.cronStore, s.taskManager)
+	s.cronSched.Start()
+}
+
+// authTokenHandlers 返回 auth token 子路由 mux
+func (s *Server) authTokenHandlers() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.authHandlers.HandleDeleteToken)
+	return mux
+}
+
+func (s *Server) registerHandlers() {
 
 	// 注册内置任务 handler
-	taskMgr.Register("echo", func(ctx context.Context, t *task.Task) error {
+	s.taskManager.Register("echo", func(ctx context.Context, t *task.Task) error {
 		if msg, ok := t.Payload["message"].(string); ok {
 			t.Result = "Echo: " + msg
 		}
 		return nil
 	})
-	taskMgr.Register("delay", func(ctx context.Context, t *task.Task) error {
+	s.taskManager.Register("delay", func(ctx context.Context, t *task.Task) error {
 		seconds := 1
 		if v, ok := t.Payload["seconds"].(float64); ok {
 			seconds = int(v)
@@ -89,12 +144,15 @@ func NewServerWithStore(port int, store task.Store) *Server {
 		t.Result = fmt.Sprintf("等待 %d 秒完成", seconds)
 		return nil
 	})
-
-	return s
 }
 
-// SetupRoutes 设置路由
+// SetupRoutes 设置路由（幂等）
 func (s *Server) SetupRoutes() {
+	// 如果已设置过，替换 mux 以避免冲突
+	s.mu.Lock()
+	s.mux = http.NewServeMux()
+	s.mu.Unlock()
+
 	// 健康检查
 	s.mux.HandleFunc("/health", s.handleHealth)
 
@@ -128,6 +186,32 @@ func (s *Server) SetupRoutes() {
 	api.Handle("/build", s.rateLimit.Middleware(http.HandlerFunc(s.handleBuild)))
 	api.HandleFunc("/status", s.handleStatus)
 	s.mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api))
+
+	// 认证/模板/Cron 路由（仅在 initFullFeatures 之后可用）
+	if s.authHandlers != nil && s.authMiddleware != nil {
+		// 公开（无需 token）
+		api.HandleFunc("/auth/register", s.authHandlers.HandleRegister)
+		api.HandleFunc("/auth/login", s.authHandlers.HandleLogin)
+		// 需要 token
+		api.Handle("/auth/me", s.authMiddleware.RequireAuth(http.HandlerFunc(s.authHandlers.HandleMe)))
+		api.Handle("/auth/tokens", s.authMiddleware.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				s.authHandlers.HandleListTokens(w, r)
+			case http.MethodPost:
+				s.authHandlers.HandleCreateToken(w, r)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})))
+		api.Handle("/auth/tokens/", s.authMiddleware.RequireAuth(http.StripPrefix("/auth/tokens", s.authTokenHandlers())))
+	}
+	if s.templateStore != nil {
+		s.handleTemplateRoutes(api)
+	}
+	if s.cronStore != nil {
+		s.handleCronRoutes(api)
+	}
 
 	// 管理员接口
 	admin := http.NewServeMux()
@@ -540,4 +624,20 @@ type Event struct {
 	Type      string      `json:"type"`
 	Data      interface{} `json:"data"`
 	Timestamp time.Time   `json:"timestamp"`
+}
+
+
+// ==== JSON helpers ====
+
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func writeJSONError(w http.ResponseWriter, status int, err, msg string) {
+	writeJSON(w, status, map[string]interface{}{
+		"error":   err,
+		"message": msg,
+	})
 }

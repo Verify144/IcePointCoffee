@@ -67,6 +67,62 @@ func (d *DB) migrate() error {
 		config TEXT,
 		loaded_at DATETIME
 	);
+
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		username TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'user',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME
+	);
+	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+	CREATE TABLE IF NOT EXISTS api_tokens (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		scopes TEXT NOT NULL DEFAULT '[]',
+		expires_at DATETIME,
+		last_used_at DATETIME,
+		created_at DATETIME NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON api_tokens(user_id);
+	CREATE INDEX IF NOT EXISTS idx_tokens_hash ON api_tokens(token_hash);
+
+	CREATE TABLE IF NOT EXISTS build_templates (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		category TEXT NOT NULL DEFAULT 'custom',
+		params_schema TEXT NOT NULL DEFAULT '{}',
+		blocks TEXT NOT NULL DEFAULT '{}',
+		is_public INTEGER NOT NULL DEFAULT 0,
+		likes INTEGER NOT NULL DEFAULT 0,
+		uses INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME
+	);
+	CREATE INDEX IF NOT EXISTS idx_templates_user ON build_templates(user_id);
+	CREATE INDEX IF NOT EXISTS idx_templates_category ON build_templates(category);
+
+	CREATE TABLE IF NOT EXISTS cron_jobs (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		cron_expr TEXT NOT NULL,
+		task_type TEXT NOT NULL,
+		payload TEXT NOT NULL DEFAULT '{}',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		last_run_at DATETIME,
+		last_run_status TEXT,
+		next_run_at DATETIME,
+		created_at DATETIME NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_crons_user ON cron_jobs(user_id);
+	CREATE INDEX IF NOT EXISTS idx_crons_enabled ON cron_jobs(enabled);
 	`
 	_, err := d.sqldb.Exec(schema)
 	return err
