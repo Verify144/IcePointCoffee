@@ -19,8 +19,9 @@ type Tool interface {
 
 // ToolRegistry 工具注册表
 type ToolRegistry struct {
-	mu    sync.RWMutex
-	tools map[string]Tool
+	mu       sync.RWMutex
+	tools    map[string]Tool
+	observer func(name string, args json.RawMessage, result *CallResult, durationMs int64)
 }
 
 // NewToolRegistry 创建工具注册表
@@ -65,8 +66,9 @@ type CallResult struct {
 
 // CallTool 调用工具
 func (r *ToolRegistry) CallTool(ctx context.Context, name string, args json.RawMessage) *CallResult {
+	start := time.Now()
 	tool, ok := r.Get(name)
-	result := &CallResult{ToolName: name, Time: time.Now()}
+	result := &CallResult{ToolName: name, Time: start}
 	if !ok {
 		result.Error = fmt.Sprintf("tool not found: %s", name)
 		return result
@@ -80,12 +82,32 @@ func (r *ToolRegistry) CallTool(ctx context.Context, name string, args json.RawM
 	result.Args = parsedArgs
 
 	res, err := tool.Execute(ctx, args)
+	durationMs := time.Since(start).Milliseconds()
 	if err != nil {
 		result.Error = err.Error()
 	} else {
 		result.Result = res
 	}
+
+	// 通知 observer（用于记录历史/SSE推送）
+	if observer := r.getObserver(); observer != nil {
+		observer(name, args, result, durationMs)
+	}
+
 	return result
+}
+
+// SetObserver 设置工具调用观察者（用于历史记录）
+func (r *ToolRegistry) SetObserver(fn func(name string, args json.RawMessage, result *CallResult, durationMs int64)) {
+	r.mu.Lock()
+	r.observer = fn
+	r.mu.Unlock()
+}
+
+func (r *ToolRegistry) getObserver() func(string, json.RawMessage, *CallResult, int64) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.observer
 }
 
 // OpenAITool OpenAI 兼容工具格式

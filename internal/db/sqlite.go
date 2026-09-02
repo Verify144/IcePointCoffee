@@ -85,6 +85,20 @@ func (d *DB) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_templates_user ON build_templates(user_id);
 	CREATE INDEX IF NOT EXISTS idx_templates_category ON build_templates(category);
 
+	CREATE TABLE IF NOT EXISTS command_history (
+		id TEXT PRIMARY KEY,
+		tool TEXT NOT NULL,
+		command TEXT NOT NULL,
+		args TEXT NOT NULL DEFAULT '{}',
+		output TEXT NOT NULL DEFAULT '',
+		success INTEGER NOT NULL DEFAULT 1,
+		dangerous INTEGER NOT NULL DEFAULT 0,
+		duration_ms INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL
+	);
+	CREATE INDEX idx_history_created ON command_history(created_at DESC);
+	CREATE INDEX idx_history_tool ON command_history(tool);
+
 	CREATE TABLE IF NOT EXISTS cron_jobs (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,

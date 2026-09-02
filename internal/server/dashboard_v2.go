@@ -552,6 +552,62 @@ html, body {
   font-family: 'Fira Code', monospace;
 }
 
+/* === Control Tab === */
+.cmd-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: var(--transition);
+  border-left: 3px solid transparent;
+}
+
+.cmd-item:hover { background: var(--bg-secondary); }
+.cmd-item.failed { border-left-color: var(--error); }
+.cmd-item.dangerous { border-left-color: #ff8800; }
+
+.cmd-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.cmd-tool-icon { font-size: 1.1rem; }
+.cmd-tool-name { font-weight: 600; color: var(--accent-primary); flex: 1; }
+.cmd-time { color: var(--text-secondary); font-size: 0.75rem; }
+.cmd-duration { color: var(--text-secondary); font-size: 0.7rem; }
+.cmd-status { font-weight: 600; font-size: 1rem; }
+.cmd-status.ok { color: #44dd44; }
+.cmd-status.fail { color: var(--error); }
+
+.cmd-item-cmd {
+  color: var(--text-primary);
+  font-weight: 500;
+  margin: 2px 0;
+}
+
+.cmd-item-output {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-chip {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  text-align: center;
+  transition: var(--transition);
+  cursor: default;
+}
+
+.tool-chip:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
 /* === Tools === */
 .tool-search {
   margin-bottom: 16px;
@@ -710,6 +766,7 @@ html, body {
     <a class="nav-item active" data-tab="status"><span class="nav-icon">📊</span><span>状态</span></a>
     <a class="nav-item" data-tab="ai"><span class="nav-icon">🤖</span><span>AI 对话</span></a>
     <a class="nav-item" data-tab="commands"><span class="nav-icon">💬</span><span>命令</span></a>
+    <a class="nav-item" data-tab="control"><span class="nav-icon">🎮</span><span>操控</span></a>
     <a class="nav-item" data-tab="events"><span class="nav-icon">📡</span><span>事件</span></a>
     <a class="nav-item" data-tab="build"><span class="nav-icon">🏠</span><span>建筑</span></a>
     <a class="nav-item" data-tab="plugins"><span class="nav-icon">🔌</span><span>插件</span></a>
@@ -777,6 +834,32 @@ html, body {
         <button class="btn" onclick="document.getElementById('cmdText').value=''">清空</button>
       </div>
       <div class="output" id="cmdOutput" style="margin-top:12px">等待执行...</div>
+    </div>
+  </div>
+
+  <div id="tabControl" class="tab-content hidden">
+    <div id="mcStatusBar" style="display:flex;gap:12px;align-items:center;padding:12px 16px;background:var(--bg-secondary);border-radius:8px;margin-bottom:16px">
+      <div id="mcStatusDot" style="width:10px;height:10px;border-radius:50%;background:#ff4444"></div>
+      <span id="mcStatusText" style="font-weight:600">未连接</span>
+      <span style="margin-left:auto;color:var(--text-secondary);font-size:0.85rem" id="mcToolCount">0 个 MC 工具可用</span>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <div class="card-title">🎮 命令历史</div>
+        <button class="btn" onclick="clearCmdHistory()" style="font-size:0.8rem;padding:4px 10px">清空</button>
+      </div>
+      <div id="cmdHistoryList" style="max-height:500px;overflow-y:auto;font-family:monospace;font-size:0.82rem">
+        <div id="cmdHistoryEmpty" style="padding:20px;text-align:center;color:var(--text-secondary)">
+          暂无命令记录。AI 执行工具时会自动记录。
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🛠️ 可用工具</div>
+      </div>
+      <div id="mcToolsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding:12px">
+      </div>
     </div>
   </div>
 
@@ -1113,6 +1196,9 @@ async function loadTools() {
     const r = await api('/ai/tools');
     allTools = r.openai || [];
     renderTools(allTools);
+    // 同时更新控制标签页的 MC 工具列表
+    window.mcToolsList = allTools.map(t => t.function.name).filter(n => n.startsWith('mc_'));
+    updateMCToolsStatus();
   } catch (e) {
     $('toolsList').innerHTML = '<div class="tool-card"><div class="tool-desc">加载失败</div></div>';
   }
@@ -1156,6 +1242,158 @@ async function restart() {
   } catch (e) {}
 }
 
+// ===== 控制标签页 =====
+let cmdHistoryItems = [];
+async function loadCmdHistory() {
+  try {
+    const r = await api('/cmdlog', 'GET');
+    cmdHistoryItems = r.commands || [];
+    renderCmdHistory();
+    updateMCToolsStatus();
+  } catch (e) {}
+}
+
+function renderCmdHistory() {
+  const list = $('cmdHistoryList');
+  const empty = $('cmdHistoryEmpty');
+  if (!list) return;
+
+  if (cmdHistoryItems.length === 0) {
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  list.innerHTML = '';
+  for (const item of cmdHistoryItems) {
+    list.appendChild(buildCmdItem(item));
+  }
+}
+
+function buildCmdItem(item) {
+  const div = document.createElement('div');
+  div.className = 'cmd-item' + (item.dangerous ? ' dangerous' : '') + (item.success ? '' : ' failed');
+  const time = new Date(item.created_at).toLocaleTimeString('zh-CN', {hour12: false});
+  const toolIcon = getToolIcon(item.tool);
+  const output = item.output || (item.success ? '✓ 执行成功' : '✗ ' + item.error);
+  div.innerHTML = [
+    '<div class="cmd-item-header">',
+    '  <span class="cmd-tool-icon">' + toolIcon + '</span>',
+    '  <span class="cmd-tool-name">' + escapeHtml(item.tool) + '</span>',
+    '  <span class="cmd-time">' + time + '</span>',
+    '  <span class="cmd-duration">' + item.duration_ms + 'ms</span>',
+    '  ' + (item.success ? '<span class="cmd-status ok">✓</span>' : '<span class="cmd-status fail">✗</span>'),
+    '</div>',
+    '<div class="cmd-item-cmd">' + escapeHtml(item.command) + '</div>',
+    '<div class="cmd-item-output">' + escapeHtml(output) + '</div>',
+  ].join('');
+  return div;
+}
+
+function getToolIcon(tool) {
+  const icons = {
+    mc_command: '🔧', mc_chat: '💬', mc_teleport: '📍',
+    mc_give: '🎁', mc_setblock: '🧱', mc_fill: '🏗️',
+    mc_dialog: '📢', mc_gamemode: '🎮', mc_world: '🌍',
+    mc_status: '📊',
+  };
+  return icons[tool] || '🎮';
+}
+
+function clearCmdHistory() {
+  if (!confirm('确认清空所有命令历史？')) return;
+  api('/cmdlog', 'DELETE').then(() => {
+    cmdHistoryItems = [];
+    renderCmdHistory();
+    showToast('已清空', 'success');
+  }).catch(e => showToast('清空失败: ' + e.message, 'error'));
+}
+
+function updateMCToolsStatus() {
+  const dot = $('mcStatusDot');
+  const text = $('mcStatusText');
+  const count = $('mcToolCount');
+  if (!dot || !text) return;
+
+  // 从 AI 工具列表获取 MC 工具数
+  const mcTools = (window.mcToolsList || []).filter(t => t.startsWith('mc_'));
+  if (mcTools.length > 0) {
+    dot.style.background = '#44dd44';
+    text.textContent = 'AI 就绪';
+    if (count) count.textContent = mcTools.length + ' 个 MC 工具可用';
+    populateMCToolsGrid(mcTools);
+  } else {
+    dot.style.background = '#ff4444';
+    text.textContent = 'AI 未启用';
+    if (count) count.textContent = '0 个 MC 工具';
+  }
+}
+
+function populateMCToolsGrid(mcTools) {
+  const grid = $('mcToolsGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const toolNames = {
+    mc_command: '执行命令', mc_chat: '发送消息', mc_teleport: '传送',
+    mc_give: '给予物品', mc_setblock: '放置方块', mc_fill: '填充区域',
+    mc_dialog: '对话/标题', mc_gamemode: '游戏模式', mc_world: '时间/天气',
+    mc_status: '查询状态',
+  };
+  for (const t of mcTools) {
+    const btn = document.createElement('div');
+    btn.className = 'tool-chip';
+    btn.innerHTML = getToolIcon(t) + ' ' + (toolNames[t] || t);
+    grid.appendChild(btn);
+  }
+}
+
+// 当切换到控制标签页时，刷新历史
+const origSwitchTab = switchTab;
+function switchTab(name) {
+  origSwitchTab(name);
+  if (name === 'control') loadCmdHistory();
+}
+
+// 覆盖 addEvent 以处理 tool_call 事件
+const origAddEvent = addEvent;
+function addEvent(ev) {
+  origAddEvent(ev);
+  if (ev.type === 'tool_call') {
+    handleToolCallEvent(ev);
+  }
+}
+
+function handleToolCallEvent(ev) {
+  const item = {
+    tool: ev.tool,
+    command: ev.command,
+    output: ev.output,
+    success: ev.success,
+    dangerous: ev.dangerous,
+    duration_ms: ev.duration_ms,
+    created_at: ev.time || new Date().toISOString(),
+    error: ev.error,
+  };
+  // 插入到历史列表头部
+  cmdHistoryItems.unshift(item);
+  if (cmdHistoryItems.length > 200) cmdHistoryItems.pop();
+
+  // 实时追加到 DOM
+  const list = $('cmdHistoryList');
+  const empty = $('cmdHistoryEmpty');
+  if (list && $('tabControl') && !$('tabControl').classList.contains('hidden')) {
+    if (empty) empty.style.display = 'none';
+    const el = buildCmdItem(item);
+    list.insertBefore(el, list.firstChild);
+    if (list.children.length > 200) list.lastChild.remove();
+  }
+}
+
+async function initControlTab() {
+  await loadCmdHistory();
+}
+
+// ===== SSE =====
 function startSSE() {
   if (eventSource) eventSource.close();
   eventSource = new EventSource(API + '/events');
@@ -1220,7 +1458,7 @@ document.addEventListener('keydown', function(e) {
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
     const num = parseInt(e.key);
     if (num >= 1 && num <= 8) {
-      const tabs = ['status', 'ai', 'commands', 'events', 'build', 'plugins', 'tools', 'about'];
+      const tabs = ['status', 'ai', 'commands', 'control', 'events', 'build', 'plugins', 'tools', 'about'];
       if (tabs[num - 1]) showTab(tabs[num - 1]);
     }
   }

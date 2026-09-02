@@ -15,6 +15,7 @@ import (
 	"github.com/Verify144/IcePointCoffee/internal/ai"
 	"github.com/Verify144/IcePointCoffee/internal/builder"
 	"github.com/Verify144/IcePointCoffee/internal/cron"
+	"github.com/Verify144/IcePointCoffee/internal/db"
 	"github.com/Verify144/IcePointCoffee/internal/mc"
 	"github.com/Verify144/IcePointCoffee/internal/metrics"
 	"github.com/Verify144/IcePointCoffee/internal/task"
@@ -48,6 +49,9 @@ type Server struct {
 	// MC 工具
 	mcAdapter *mc.Adapter
 	mcTools   *ai.MCController
+
+	// 命令历史
+	cmdHistory *db.CommandHistoryStore
 
 	// 流式会话管理（用于 AI 流式取消）
 	streamCancels map[string]context.CancelFunc
@@ -85,25 +89,131 @@ func NewServerWithStore(port int, store task.Store) *Server {
 }
 
 // NewServerWithDB 创建带完整功能的服务器（认证+模板+Cron）
-func NewServerWithDB(port int, db *sql.DB) *Server {
+func NewServerWithDB(port int, sqlDB *sql.DB) *Server {
 	s := NewServerWithStore(port, nil)
-	if db != nil {
-		s.initFullFeatures(db)
+	if sqlDB != nil {
+		s.initFullFeatures(sqlDB)
 		// 重新设置路由以包含 auth/templates/cron
 		s.SetupRoutes()
 	}
 	return s
 }
 
-func (s *Server) initFullFeatures(db *sql.DB) {
+func (s *Server) initFullFeatures(sqlDB *sql.DB) {
 	// 模板
-	s.templateStore = template.NewStore(db)
+	s.templateStore = template.NewStore(sqlDB)
 	s.templateStore.SeedPublicTemplates() // 幂等初始化公开模板
 
 	// Cron
-	s.cronStore = cron.NewStore(db)
+	s.cronStore = cron.NewStore(sqlDB)
 	s.cronSched = cron.NewScheduler(s.cronStore, s.taskManager)
 	s.cronSched.Start()
+
+	// 命令历史
+	s.cmdHistory = db.NewCommandHistoryStore(sqlDB)
+
+	// 设置 AI 工具观察者（自动记录历史 + SSE 推送）
+	if s.registry != nil {
+		s.registry.SetObserver(s.observeToolCall)
+	}
+}
+
+// observeToolCall 观察 AI 工具调用，记录历史并广播事件
+func (s *Server) observeToolCall(name string, args json.RawMessage, result *ai.CallResult, durationMs int64) {
+	// 仅记录 MC 工具
+	if !isMCTool(name) {
+		return
+	}
+
+	// 提取命令字符串
+	cmd := extractCommandName(args)
+
+	// 输出
+	output := ""
+	success := result.Error == ""
+	if result.Result != nil {
+		if m, ok := result.Result.(map[string]interface{}); ok {
+			if o, ok := m["output"]; ok {
+				output = stringFromInterface(o)
+			}
+			if s, ok := m["success"].(bool); ok {
+				success = s
+			}
+		}
+	}
+	if result.Error != "" {
+		output = result.Error
+	}
+
+	// 危险检测
+	dangerous := isDangerousCommand(cmd)
+
+	// 记录到 DB
+	if s.cmdHistory != nil {
+		_ = s.cmdHistory.Add(&db.CommandHistory{
+			Tool:       name,
+			Command:    cmd,
+			Args:       string(args),
+			Output:     output,
+			Success:    success,
+			Dangerous:  dangerous,
+			DurationMs: durationMs,
+			CreatedAt:  result.Time,
+		})
+	}
+
+	// 推送 SSE 事件
+	s.addEvent("tool_call", map[string]interface{}{
+		"tool":        name,
+		"command":     cmd,
+		"output":      output,
+		"success":     success,
+		"dangerous":   dangerous,
+		"duration_ms": durationMs,
+		"time":        result.Time,
+	})
+}
+
+// isMCTool 判断是否为 MC 工具
+func isMCTool(name string) bool {
+	return len(name) > 3 && name[:3] == "mc_"
+}
+
+// extractCommandName 从 args 提取命令名
+func extractCommandName(args json.RawMessage) string {
+	var m map[string]interface{}
+	if err := json.Unmarshal(args, &m); err != nil {
+		return ""
+	}
+	for _, key := range []string{"command", "block", "item", "kind", "value", "target", "mode", "time", "weather", "message"} {
+		if v, ok := m[key]; ok {
+			return fmt.Sprintf("%s=%v", key, v)
+		}
+	}
+	return string(args)
+}
+
+func stringFromInterface(v interface{}) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case fmt.Stringer:
+		return x.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// isDangerousCommand 检测是否危险命令
+func isDangerousCommand(cmd string) bool {
+	cmd = strings.ToLower(cmd)
+	patterns := []string{"fill", "setblock", "kill", "clear", "ban", "kick", "op", "deop", "replaceitem", "clone", "teleport", "weather thunder", "weather rain"}
+	for _, p := range patterns {
+		if strings.Contains(cmd, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // authTokenHandlers 占位（已删除认证）
@@ -172,6 +282,8 @@ func (s *Server) SetupRoutes() {
 	api.HandleFunc("/tasks/", s.handleTasksRoot)
 
 	api.Handle("/commands", s.rateLimit.Middleware(http.HandlerFunc(s.handleCommands)))
+	// 命令历史（AI 工具调用历史）
+	api.HandleFunc("/cmdlog", s.handleCommandHistory)
 	api.HandleFunc("/events", s.handleEvents)
 	api.HandleFunc("/plugins", s.handlePlugins)
 	api.HandleFunc("/plugins/register", s.handlePluginRegister)
