@@ -34,6 +34,10 @@ type Server struct {
 	taskManager *task.Manager
 	events    []Event
 	maxEvents int
+
+	// 流式会话管理（用于 AI 流式取消）
+	streamCancels map[string]context.CancelFunc
+	streamMu      sync.RWMutex
 }
 
 // NewServer 创建服务器（使用内存存储）
@@ -49,15 +53,16 @@ func NewServerWithStore(port int, store task.Store) *Server {
 	taskMgr := task.NewManager(store, 4)
 
 	s := &Server{
-		port:        port,
-		mux:         http.NewServeMux(),
-		registry:    ai.NewToolRegistry(),
-		memory:      ai.NewMemory(50),
-		builder:     builder.New(),
-		plugins:     make(map[string]interface{}),
-		maxEvents:   100,
-		rateLimit:   NewRateLimiter(100, time.Minute),
-		taskManager: taskMgr,
+		port:          port,
+		mux:           http.NewServeMux(),
+		registry:      ai.NewToolRegistry(),
+		memory:        ai.NewMemory(50),
+		builder:       builder.New(),
+		plugins:       make(map[string]interface{}),
+		maxEvents:     100,
+		rateLimit:     NewRateLimiter(100, time.Minute),
+		taskManager:   taskMgr,
+		streamCancels: make(map[string]context.CancelFunc),
 	}
 	taskMgr.Start()
 
@@ -104,6 +109,8 @@ func (s *Server) SetupRoutes() {
 	api.Handle("/ai/chat", s.rateLimit.Middleware(http.HandlerFunc(s.handleAIChat)))
 	// AI 流式对话
 	api.Handle("/ai/chat/stream", s.rateLimit.Middleware(http.HandlerFunc(s.handleAIChatStream)))
+	// AI 流式取消
+	api.HandleFunc("/ai/chat/stream/", s.handleAIStreamCancel)
 	api.HandleFunc("/ai/tools", s.handleAITools)
 	api.HandleFunc("/ai/memory", s.handleAIMemory)
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,9 +29,10 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	var req struct {
-		Message  string `json:"message"`
-		System   string `json:"system"`
-		UseTools bool   `json:"use_tools"`
+		Message   string `json:"message"`
+		System    string `json:"system"`
+		UseTools  bool   `json:"use_tools"`
+		SessionID string `json:"session_id"` // 可选，客户端指定 session
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		SendError(w, http.StatusBadRequest, 400, "JSON 解析失败", err.Error())
@@ -42,12 +44,20 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 生成或使用提供的 session ID
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("s_%d", time.Now().UnixNano())
+	}
+
 	// 设置 SSE 响应头
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("X-Accel-Buffering", "no")
+	// 返回 session ID，让客户端知道如何取消
+	w.Header().Set("X-Session-ID", sessionID)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -66,7 +76,22 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 
 	// 流式响应
 	var fullResponse strings.Builder
-	ctx := r.Context()
+
+	// 创建可取消的 context
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// 注册 cancel（支持外部主动取消）
+	s.streamMu.Lock()
+	s.streamCancels[sessionID] = cancel
+	s.streamMu.Unlock()
+
+	// 确保完成后清理
+	defer func() {
+		s.streamMu.Lock()
+		delete(s.streamCancels, sessionID)
+		s.streamMu.Unlock()
+	}()
 
 	sendChunk := func(chunk ai.StreamChunk) {
 		data, _ := json.Marshal(chunk)
@@ -78,7 +103,11 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 发送开始事件
+	// 发送 session ID 和开始事件
+	sendChunk(ai.StreamChunk{
+		Type:    "session",
+		Content: sessionID,
+	})
 	sendChunk(ai.StreamChunk{Type: "start", Content: "生成中..."})
 
 	// 执行流式调用
@@ -90,7 +119,7 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 		streamErr = ai.MockStream(ctx, messages, sendChunk)
 	}
 
-	if streamErr != nil {
+	if streamErr != nil && ctx.Err() != context.Canceled {
 		sendChunk(ai.StreamChunk{Type: "error", Error: streamErr.Error()})
 		metrics.DefaultBusiness.IncAIChat(false, fullResponse.Len())
 		return
@@ -102,6 +131,35 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 	// 记录指标
 	metrics.DefaultBusiness.IncAIChat(true, fullResponse.Len())
 	metrics.DefaultBusiness.IncEvent("ai_chat_stream")
+}
+
+// handleAIStreamCancel 取消正在进行的 AI 流式会话
+// DELETE /api/v1/ai/chat/stream/{session_id}
+func (s *Server) handleAIStreamCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "DELETE only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 从 URL 中提取 session_id
+	sessionID := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/"), "ai/chat/stream/")
+	if sessionID == "" {
+		SendError(w, http.StatusBadRequest, 400, "缺少 session_id", "")
+		return
+	}
+
+	s.streamMu.Lock()
+	cancel, ok := s.streamCancels[sessionID]
+	delete(s.streamCancels, sessionID)
+	s.streamMu.Unlock()
+
+	if !ok {
+		SendError(w, http.StatusNotFound, 404, "会话不存在或已结束", "")
+		return
+	}
+
+	cancel() // 中断流式生成
+	SendSuccess(w, map[string]string{"status": "cancelled", "session_id": sessionID})
 }
 
 // handleTaskSubmit 提交任务

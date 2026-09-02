@@ -237,3 +237,52 @@ func TestHandleAIChatStreamEmptyMessage(t *testing.T) {
 		t.Errorf("Empty message should be 400, got %d", rec.Code)
 	}
 }
+
+func TestHandleAIStreamCancel(t *testing.T) {
+	s := NewServer(8080)
+	s.SetupRoutes()
+
+	// 先提交一个长流式请求
+	payload := map[string]interface{}{
+		"message":   "hello",
+		"session_id": "cancel-test-123",
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/ai/chat/stream", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	// 启动流式请求（不同步）
+	go func() {
+		s.mux.ServeHTTP(rec, req)
+	}()
+
+	// 等待 session 注册
+	time.Sleep(100 * time.Millisecond)
+
+	// 取消会话
+	req2 := httptest.NewRequest("DELETE", "/api/v1/ai/chat/stream/cancel-test-123", nil)
+	rec2 := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Errorf("Cancel should be 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	if !strings.Contains(rec2.Body.String(), "cancelled") {
+		t.Errorf("Response should contain cancelled: %s", rec2.Body.String())
+	}
+}
+
+func TestHandleAIStreamCancelNotFound(t *testing.T) {
+	s := NewServer(8080)
+	s.SetupRoutes()
+
+	req := httptest.NewRequest("DELETE", "/api/v1/ai/chat/stream/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Cancel nonexistent should be 404, got %d", rec.Code)
+	}
+}
