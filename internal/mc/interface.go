@@ -38,6 +38,19 @@ type ClientInterface interface {
 	SetGameMode(target, mode string) error
 	GiveItem(target, item string, count int) error
 	Kill(target string) error
+	Respawn(x, y, z float64) error
+	SwingArm() error
+
+	// 实体交互
+	AttackEntity(targetID uint64) error
+	SpawnEntity(entityType, name string, x, y, z float64) error
+	RemoveEntity(entityID uint64) error
+
+	// 视觉
+	PlaySound(soundID string, x, y, z float64, volume, pitch float32) error
+	StopSound(soundID string) error
+	EmitParticle(particleID int32, x, y, z float64) error
+	SetBossBar(target string, title string, healthPercent float32) error
 
 	// 世界
 	SetBlock(x, y, z int, block string) error

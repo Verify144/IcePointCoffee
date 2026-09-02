@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	netherite "github.com/Verify144/IcePointCoffee/internal/netherite/mc"
+	"github.com/Verify144/IcePointCoffee/internal/netherite/protocol"
 )
 
 // Adapter 持有真实的 netherite MC Client。
@@ -157,6 +158,95 @@ func (a *Adapter) SetWeather(weather string) error {
 func (a *Adapter) runCmd(cmd string) error {
 	_, err := a.SendCommand(context.Background(), cmd)
 	return err
+}
+
+// ---- 新协议包方法 ----
+
+// Respawn 发送重生包
+func (a *Adapter) Respawn(x, y, z float64) error {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return fmt.Errorf("未连接到服务器")
+	}
+	data := protocol.EncodeRespawn(x, y, z)
+	c.SendFrame(data)
+	return nil
+}
+
+// SwingArm 发送挥臂动画（挥手）
+func (a *Adapter) SwingArm() error {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return fmt.Errorf("未连接到服务器")
+	}
+	data := protocol.EncodeAnimate(int32(protocol.AnimateActionSwing))
+	c.SendFrame(data)
+	return nil
+}
+
+// AttackEntity 攻击实体
+func (a *Adapter) AttackEntity(targetID uint64) error {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return fmt.Errorf("未连接到服务器")
+	}
+	data := protocol.EncodeInteract(protocol.InteractActionLeftClick, targetID, 0, 0, 0)
+	c.SendFrame(data)
+	return nil
+}
+
+// SpawnEntity 生成生物（召唤）
+func (a *Adapter) SpawnEntity(entityType, name string, x, y, z float64) error {
+	// 召唤生物使用 summon 命令（更通用）
+	cmd := fmt.Sprintf("/summon %s %.1f %.1f %.1f", entityType, x, y, z)
+	if name != "" {
+		cmd = fmt.Sprintf("/summon %s %.1f %.1f %.1f {CustomName:'\"%s\"'}", entityType, x, y, z, name)
+	}
+	return a.runCmd(cmd)
+}
+
+// RemoveEntity 移除实体（kill）
+func (a *Adapter) RemoveEntity(entityID uint64) error {
+	return a.runCmd(fmt.Sprintf("/kill @e[type=!player,c=1]"))
+}
+
+// PlaySound 播放声音
+func (a *Adapter) PlaySound(soundID string, x, y, z float64, volume, pitch float32) error {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return fmt.Errorf("未连接到服务器")
+	}
+	data := protocol.EncodePlaySound(soundID, x, y, z, volume, pitch)
+	c.SendFrame(data)
+	return nil
+}
+
+// StopSound 停止声音
+func (a *Adapter) StopSound(soundID string) error {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return fmt.Errorf("未连接到服务器")
+	}
+	data := protocol.EncodeStopSound(soundID, false)
+	c.SendFrame(data)
+	return nil
+}
+
+// EmitParticle 发射粒子效果
+func (a *Adapter) EmitParticle(particleID int32, x, y, z float64) error {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return fmt.Errorf("未连接到服务器")
+	}
+	// LevelEvent packet: 0x12, particle events start at ID 1000+
+	data := protocol.EncodeLevelEvent(int16(1000+particleID), x, y, z, 0)
+	c.SendFrame(data)
+	return nil
+}
+
+// SetBossBar 设置 Boss 血条
+func (a *Adapter) SetBossBar(target string, title string, healthPercent float32) error {
+	return a.runCmd(fmt.Sprintf("/bossbar add %s \"%s\"", target, title))
 }
 
 // compile-time interface check

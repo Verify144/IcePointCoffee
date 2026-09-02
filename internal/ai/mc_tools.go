@@ -581,6 +581,15 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 	gm := NewMCGameModeTool()
 	world := NewMCWorldTool()
 	status := NewMCStatusTool()
+	attack := NewMCAttackTool()
+	spawn := NewMCSpawnEntityTool()
+	remove := NewMCRemoveEntityTool()
+	sound := NewMCPlaySoundTool()
+	stopSound := NewMCStopSoundTool()
+	particle := NewMCMakeParticlesTool()
+	respawn := NewMCRespawnTool()
+	swing := NewMCSwingArmTool()
+	bossbar := NewMCBossBarTool()
 
 	reg.Register(command)
 	reg.Register(chat)
@@ -592,33 +601,60 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 	reg.Register(gm)
 	reg.Register(world)
 	reg.Register(status)
+	reg.Register(attack)
+	reg.Register(spawn)
+	reg.Register(remove)
+	reg.Register(sound)
+	reg.Register(stopSound)
+	reg.Register(particle)
+	reg.Register(respawn)
+	reg.Register(swing)
+	reg.Register(bossbar)
 
 	return &MCController{
-		Command:  command,
-		Chat:     chat,
-		Teleport: tp,
-		Give:     give,
-		SetBlock: setblock,
-		Fill:     fill,
-		Dialog:   dialog,
-		GameMode: gm,
-		World:    world,
-		Status:   status,
+		Command:    command,
+		Chat:       chat,
+		Teleport:   tp,
+		Give:       give,
+		SetBlock:   setblock,
+		Fill:       fill,
+		Dialog:     dialog,
+		GameMode:   gm,
+		World:      world,
+		Status:     status,
+		Attack:     attack,
+		Spawn:      spawn,
+		Remove:     remove,
+		Sound:      sound,
+		StopSound:  stopSound,
+		Particle:   particle,
+		Respawn:    respawn,
+		Swing:      swing,
+		BossBar:    bossbar,
 	}
 }
 
 // MCController 持有所有 MC 工具，提供统一的 client 注入
 type MCController struct {
-	Command  *MCCommandTool
-	Chat     *MCChatTool
-	Teleport *MCTeleportTool
-	Give     *MCGiveTool
-	SetBlock *MCSetBlockTool
-	Fill     *MCFillTool
-	Dialog   *MCDialogTool
-	GameMode *MCGameModeTool
-	World    *MCWorldTool
-	Status   *MCStatusTool
+	Command    *MCCommandTool
+	Chat       *MCChatTool
+	Teleport   *MCTeleportTool
+	Give       *MCGiveTool
+	SetBlock   *MCSetBlockTool
+	Fill       *MCFillTool
+	Dialog     *MCDialogTool
+	GameMode   *MCGameModeTool
+	World      *MCWorldTool
+	Status     *MCStatusTool
+	Attack     *MCAttackTool
+	Spawn      *MCSpawnEntityTool
+	Remove     *MCRemoveEntityTool
+	Sound      *MCPlaySoundTool
+	StopSound  *MCStopSoundTool
+	Particle   *MCMakeParticlesTool
+	Respawn    *MCRespawnTool
+	Swing      *MCSwingArmTool
+	BossBar    *MCBossBarTool
 }
 
 // Inject 注入 MC 客户端到所有工具
@@ -633,6 +669,15 @@ func (c *MCController) Inject(client mc.ClientInterface) {
 	c.GameMode.SetClient(client)
 	c.World.SetClient(client)
 	c.Status.SetClient(client)
+	c.Attack.SetClient(client)
+	c.Spawn.SetClient(client)
+	c.Remove.SetClient(client)
+	c.Sound.SetClient(client)
+	c.StopSound.SetClient(client)
+	c.Particle.SetClient(client)
+	c.Respawn.SetClient(client)
+	c.Swing.SetClient(client)
+	c.BossBar.SetClient(client)
 }
 
 // init 启动时间

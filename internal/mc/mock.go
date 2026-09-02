@@ -117,4 +117,38 @@ func (m *MockClient) SetWeather(weather string) error {
 	}
 }
 
+// ---- 新协议包方法 (Mock) ----
+
+func (m *MockClient) Respawn(x, y, z float64) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/spawnpoint @s %.1f %.1f %.1f", x, y, z))
+	return nil
+}
+func (m *MockClient) SwingArm() error {
+	return nil
+}
+func (m *MockClient) AttackEntity(targetID uint64) error {
+	return nil
+}
+func (m *MockClient) SpawnEntity(entityType, name string, x, y, z float64) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/summon %s %.1f %.1f %.1f", entityType, x, y, z))
+	return nil
+}
+func (m *MockClient) RemoveEntity(entityID uint64) error {
+	_, _ = m.SendCommand(context.Background(), "/kill @e[type=!player]")
+	return nil
+}
+func (m *MockClient) PlaySound(soundID string, x, y, z float64, volume, pitch float32) error {
+	return nil
+}
+func (m *MockClient) StopSound(soundID string) error {
+	return nil
+}
+func (m *MockClient) EmitParticle(particleID int32, x, y, z float64) error {
+	return nil
+}
+func (m *MockClient) SetBossBar(target string, title string, healthPercent float32) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/bossbar add %s \"%s\"", target, title))
+	return nil
+}
+
 var _ ClientInterface = (*MockClient)(nil)

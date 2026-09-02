@@ -265,10 +265,10 @@ func (c *Client) stepLogin(ctx context.Context) error {
 // stepPostLogin 进服后握手（网易特殊包）
 func (c *Client) stepPostLogin() error {
 	// 发送 ClientCacheStatus
-	c.sendRaw(protocol.EncodeClientCacheStatus(false))
+	c.SendRaw(protocol.EncodeClientCacheStatus(false))
 
 	// 发送 LOGIN_UID
-	c.sendRaw(protocol.EncodeNeteaseJson("LOGIN_UID", "", fmt.Sprintf("%d", c.authResp.UID)))
+	c.SendRaw(protocol.EncodeNeteaseJson("LOGIN_UID", "", fmt.Sprintf("%d", c.authResp.UID)))
 
 	// 发送 PyRpc 握手序列（网易特殊）
 	c.sendPyRpc("SyncUsingMod", c.buildModList())
@@ -308,11 +308,11 @@ func (c *Client) buildModList() []any {
 // sendPyRpc 发送 PyRpc 包
 func (c *Client) sendPyRpc(method string, args []any) {
 	data := protocol.EncodePyRpc(method, args, protocol.PyRpcOperationTypeSend)
-	c.sendFrame(data)
+	c.SendFrame(data)
 }
 
 // sendFrame 发送游戏帧
-func (c *Client) sendFrame(data []byte) {
+func (c *Client) SendFrame(data []byte) {
 	frame := &raknet.Frame{
 		Flags:       raknet.FlagReliable,
 		ReliableIdx: 0,
@@ -326,8 +326,8 @@ func (c *Client) sendFrame(data []byte) {
 }
 
 // sendRaw 发送原始数据
-func (c *Client) sendRaw(data []byte) {
-	c.sendFrame(data)
+func (c *Client) SendRaw(data []byte) {
+	c.SendFrame(data)
 }
 
 // eventLoop 事件循环
@@ -481,7 +481,7 @@ func (c *Client) parseCommandOutput(data []byte) (*protocol.CommandOutput, error
 func (c *Client) SendCommand(ctx context.Context, cmd string) (*protocol.CommandOutput, error) {
 	// WS 方式
 	data := protocol.EncodeWSCmd(cmd)
-	c.sendFrame(data)
+	c.SendFrame(data)
 
 	// 等待命令输出
 	deadline := time.Now().Add(30 * time.Second)
@@ -505,7 +505,7 @@ func (c *Client) SendCommand(ctx context.Context, cmd string) (*protocol.Command
 // SendChat 发送聊天消息
 func (c *Client) SendChat(msg string) error {
 	data := c.encodeChat(msg)
-	c.sendFrame(data)
+	c.SendFrame(data)
 	return nil
 }
 

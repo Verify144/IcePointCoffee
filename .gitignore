@@ -17,3 +17,4 @@ config.local.yaml
 .idea/
 *.swp
 .DS_Store
+*_TODO.md

@@ -265,13 +265,129 @@ func TestMCControllerInject(t *testing.T) {
 
 	// 所有工具已注册
 	tools := reg.List()
-	if len(tools) < 10 {
-		t.Errorf("Expected at least 10 tools, got %d", len(tools))
+	if len(tools) < 19 {
+		t.Errorf("Expected at least 19 tools, got %d", len(tools))
 	}
 
 	// 找到 mc_command 并执行
 	_, ok := reg.Get("mc_command")
 	if !ok {
 		t.Error("mc_command should be registered")
+	}
+}
+
+func TestMCAttackTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	attack := NewMCAttackTool()
+	attack.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]uint64{"target_id": 123})
+	result, err := attack.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("attack should succeed")
+	}
+}
+
+func TestMCPlaySoundTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	sound := NewMCPlaySoundTool()
+	sound.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"sound_id": "random.levelup",
+		"x": 0.0, "y": 64.0, "z": 0.0,
+		"volume": 1.0, "pitch": 1.0,
+	})
+	result, err := sound.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("play_sound should succeed")
+	}
+}
+
+func TestMCMakeParticlesTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	particle := NewMCMakeParticlesTool()
+	particle.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"particle_id": 12, "x": 0.0, "y": 64.0, "z": 0.0,
+	})
+	result, err := particle.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("particle should succeed")
+	}
+}
+
+func TestMCSpawnEntityTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	spawn := NewMCSpawnEntityTool()
+	spawn.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"entity_type": "zombie", "x": 0.0, "y": 64.0, "z": 0.0,
+	})
+	result, err := spawn.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("spawn_entity should succeed")
+	}
+}
+
+func TestMCSwingArmTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	swing := NewMCSwingArmTool()
+	swing.SetClient(mcClient)
+	result, err := swing.Execute(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("swing should succeed")
+	}
+}
+
+func TestMCBossBarTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	bossbar := NewMCBossBarTool()
+	bossbar.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"target": "@s", "title": "Boss!", "health": 1.0,
+	})
+	result, err := bossbar.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("bossbar should succeed")
+	}
+}
+
+func TestMCRespawnTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	respawn := NewMCRespawnTool()
+	respawn.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"x": 0.0, "y": 64.0, "z": 0.0,
+	})
+	result, err := respawn.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("respawn should succeed")
 	}
 }
