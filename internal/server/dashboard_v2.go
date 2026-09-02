@@ -332,6 +332,80 @@ html, body {
   border: 1px solid var(--error);
 }
 
+/* 工具调用气泡 */
+.msg.tool {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 8px;
+  max-width: 85%;
+  margin-left: 0;
+  font-size: 0.85rem;
+}
+.msg.tool.ok { border-left-color: var(--success); }
+.msg.tool.err { border-left-color: var(--error); }
+
+.tool-header {
+  font-weight: 600;
+  color: var(--accent-primary);
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+.msg.tool.ok .tool-header { color: var(--success); }
+.msg.tool.err .tool-header { color: var(--error); }
+
+.tool-args {
+  background: var(--bg-primary);
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 4px 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+.tool-status .spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.tool-result {
+  margin-top: 6px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+/* 流式光标 */
+.cursor {
+  color: var(--accent-primary);
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+.msg.streaming { border-left: 2px solid var(--accent-primary); }
+
+/* AI 气泡内的 spinner */
+.msg.ai .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+}
+
 .msg .timestamp {
   font-size: 0.7rem;
   opacity: 0.6;
@@ -1072,6 +1146,9 @@ function renderMarkdown(text) {
   return text;
 }
 
+// ===== AI 对话流式（v2） =====
+let activeChatStream = null; // 当前 EventSource
+
 async function sendChat() {
   if (aiBusy) return;
   const input = $('chatInput');
@@ -1084,6 +1161,7 @@ async function sendChat() {
   sendBtn.innerHTML = '<span class="spinner"></span>';
 
   const msgs = $('chatMessages');
+  // 用户消息
   const userMsg = document.createElement('div');
   userMsg.className = 'msg user';
   userMsg.innerHTML = renderMarkdown(text) + '<div class="timestamp">' + getTimestamp() + '</div>';
@@ -1092,22 +1170,101 @@ async function sendChat() {
   input.style.height = 'auto';
   msgs.scrollTop = msgs.scrollHeight;
 
+  // AI 占位气泡（流式追加）
+  const aiMsg = document.createElement('div');
+  aiMsg.className = 'msg ai streaming';
+  aiMsg.innerHTML = '<span class="cursor">▋</span>';
+  msgs.appendChild(aiMsg);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // 工具气泡映射
+  const toolBubbles = {}; // tool_id -> bubble element
+  let aiContent = '';
+
   try {
-    const r = await api('/ai/chat', 'POST', {message: text, use_tools: true});
-    const aiMsg = document.createElement('div');
-    aiMsg.className = 'msg ai';
-    aiMsg.innerHTML = renderMarkdown(r.response || JSON.stringify(r)) + '<div class="timestamp">' + getTimestamp() + '</div>';
-    msgs.appendChild(aiMsg);
-    msgs.scrollTop = msgs.scrollHeight;
+    // 关闭旧流
+    if (activeChatStream) {
+      try { activeChatStream.close(); } catch (e) {}
+      activeChatStream = null;
+    }
+
+    // 使用 fetch 流式读取（SSE）
+    const r = await fetch(API + '/ai/chat/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: text, use_tools: true}),
+    });
+    if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      // 解析 SSE 块（data: {...}\n\n）
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const json = line.substring(6).trim();
+        if (!json) continue;
+        let chunk;
+        try { chunk = JSON.parse(json); } catch (e) { continue; }
+
+        if (chunk.type === 'session') continue;
+        if (chunk.type === 'start') continue;
+
+        if (chunk.type === 'content') {
+          aiContent += chunk.content || '';
+          aiMsg.innerHTML = renderMarkdown(aiContent) + '<span class="cursor">▋</span>';
+          msgs.scrollTop = msgs.scrollHeight;
+        } else if (chunk.type === 'tool_call') {
+          // 显示工具调用气泡（加载态）
+          const bubble = document.createElement('div');
+          bubble.className = 'msg tool';
+          bubble.dataset.toolId = chunk.tool_id || '';
+          const args = escapeHtml(chunk.tool_args || '');
+          bubble.innerHTML = '<div class="tool-header">🔧 ' + escapeHtml(chunk.tool_name || '?') + '</div>' +
+            '<pre class="tool-args">' + args + '</pre>' +
+            '<div class="tool-status"><span class="spinner"></span> 执行中...</div>';
+          msgs.appendChild(bubble);
+          if (chunk.tool_id) toolBubbles[chunk.tool_id] = bubble;
+          msgs.scrollTop = msgs.scrollHeight;
+        } else if (chunk.type === 'tool_result') {
+          // 工具结果回写
+          const bubble = toolBubbles[chunk.tool_id];
+          if (bubble) {
+            const ok = chunk.tool_success;
+            const result = escapeHtml(chunk.tool_result || chunk.tool_error || '');
+            bubble.className = 'msg tool ' + (ok ? 'ok' : 'err');
+            bubble.innerHTML = '<div class="tool-header">' + (ok ? '✓' : '✕') + ' ' + escapeHtml(chunk.tool_name || '?') + '</div>' +
+              '<pre class="tool-args">' + escapeHtml(chunk.tool_args || '') + '</pre>' +
+              '<div class="tool-result">' + result + '</div>';
+          }
+          msgs.scrollTop = msgs.scrollHeight;
+        } else if (chunk.type === 'error') {
+          const errMsg = document.createElement('div');
+          errMsg.className = 'msg error';
+          errMsg.textContent = '错误: ' + (chunk.error || 'unknown');
+          msgs.appendChild(errMsg);
+        } else if (chunk.type === 'done') {
+          break;
+        }
+      }
+    }
+    aiMsg.classList.remove('streaming');
+    aiMsg.innerHTML = renderMarkdown(aiContent || '(无回复)') + '<div class="timestamp">' + getTimestamp() + '</div>';
   } catch (e) {
-    const errMsg = document.createElement('div');
-    errMsg.className = 'msg error';
-    errMsg.textContent = '错误: ' + e.message;
-    msgs.appendChild(errMsg);
+    aiMsg.classList.remove('streaming');
+    aiMsg.innerHTML = '错误: ' + e.message;
   } finally {
     aiBusy = false;
     sendBtn.disabled = false;
     sendBtn.textContent = '➤';
+    msgs.scrollTop = msgs.scrollHeight;
   }
 }
 

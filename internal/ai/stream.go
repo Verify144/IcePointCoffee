@@ -14,11 +14,15 @@ import (
 
 // StreamChunk 流式响应块
 type StreamChunk struct {
-	Type      string `json:"type"` // content / tool_call / done / error
-	Content   string `json:"content,omitempty"`
-	ToolName  string `json:"tool_name,omitempty"`
-	ToolArgs  string `json:"tool_args,omitempty"`
-	ToolID    string `json:"tool_id,omitempty"`
+	Type     string `json:"type"` // content / tool_call / tool_result / done / error / session / start
+	Content  string `json:"content,omitempty"`
+	ToolName string `json:"tool_name,omitempty"`
+	ToolArgs string `json:"tool_args,omitempty"`
+	ToolID   string `json:"tool_id,omitempty"`
+	ToolResult string `json:"tool_result,omitempty"` // 工具执行结果（前端回传后回显）
+	ToolSuccess bool   `json:"tool_success,omitempty"` // 工具是否执行成功
+	ToolError string `json:"tool_error,omitempty"`   // 工具错误信息
+	Round     int    `json:"round,omitempty"`        // 第几轮工具调用
 	Error     string `json:"error,omitempty"`
 	Done      bool   `json:"done,omitempty"`
 }
@@ -142,8 +146,38 @@ func MockStream(ctx context.Context, messages []Message, callback func(StreamChu
 	last := messages[len(messages)-1]
 	prompt := last.Content
 
-	var response string
+	// Mock 工具演示：若消息包含关键词则触发工具气泡
+	toolDemo := []struct {
+		keyword string
+		tool    string
+		args    string
+		result  string
+	}{
+		{"fill", "mc_fill", `{"x1":0,"y1":64,"z1":0,"x2":10,"y2":70,"z2":10,"block":"stone"}`, "填充完成：110 个方块（10×7×10）"},
+		{"give", "mc_give", `{"target":"@s","item":"diamond","count":64}`, "已给予 Steve 64 钻石"},
+		{"spawn", "mc_spawn_entity", `{"entity_type":"zombie","x":0,"y":64,"z":0}`, "已召唤 zombie 于 (0, 64, 0)"},
+		{"sound", "mc_play_sound", `{"sound_id":"random.levelup","x":0,"y":64,"z":0}`, "已播放 random.levelup"},
+		{"particle", "mc_particle", `{"particle_id":12,"x":0,"y":64,"z":0}`, "已发射心形粒子效果"},
+	}
 	lower := strings.ToLower(prompt)
+
+	for i, demo := range toolDemo {
+		if strings.Contains(lower, demo.keyword) {
+			callback(StreamChunk{Type: "tool_call", ToolName: demo.tool, ToolArgs: demo.args, ToolID: fmt.Sprintf("mock_%d", i), Round: 1})
+			time.Sleep(600 * time.Millisecond)
+			callback(StreamChunk{
+				Type:        "tool_result",
+				ToolName:    demo.tool,
+				ToolID:      fmt.Sprintf("mock_%d", i),
+				ToolResult:  demo.result,
+				ToolSuccess: true,
+				Round:       1,
+			})
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+
+	var response string
 	switch {
 	case strings.Contains(lower, "hello") || strings.Contains(lower, "hi"):
 		response = "你好！我是 IcePoint Coffee AI 助手。有什么可以帮你的吗？"
@@ -153,6 +187,8 @@ func MockStream(ctx context.Context, messages []Message, callback func(StreamChu
 		response = fmt.Sprintf("现在时间是 %s", time.Now().Format("2006-01-02 15:04:05"))
 	case strings.Contains(lower, "status"):
 		response = "系统运行正常！所有组件都在工作。"
+	case strings.Contains(lower, "fill") || strings.Contains(lower, "give") || strings.Contains(lower, "spawn"):
+		response = "我已经执行了相应的操作。以上是执行结果的实时反馈。"
 	default:
 		response = "我已收到你的请求：" + prompt + "\n\n当前是 Mock 模式，配置 AI API 可获得真实回复。"
 	}

@@ -121,7 +121,9 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 
 	if streamErr != nil && ctx.Err() != context.Canceled {
 		sendChunk(ai.StreamChunk{Type: "error", Error: streamErr.Error()})
-		metrics.DefaultBusiness.IncAIChat(false, fullResponse.Len())
+		if metrics.DefaultBusiness != nil {
+			metrics.DefaultBusiness.IncAIChat(false, fullResponse.Len())
+		}
 		return
 	}
 
@@ -129,8 +131,10 @@ func (s *Server) handleAIChatStream(w http.ResponseWriter, r *http.Request) {
 	s.memory.Add(ai.Message{Role: "assistant", Content: fullResponse.String()})
 
 	// 记录指标
-	metrics.DefaultBusiness.IncAIChat(true, fullResponse.Len())
-	metrics.DefaultBusiness.IncEvent("ai_chat_stream")
+	if metrics.DefaultBusiness != nil {
+		metrics.DefaultBusiness.IncAIChat(true, fullResponse.Len())
+		metrics.DefaultBusiness.IncEvent("ai_chat_stream")
+	}
 }
 
 // handleAIStreamCancel 取消正在进行的 AI 流式会话
