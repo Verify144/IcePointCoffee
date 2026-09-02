@@ -68,4 +68,7 @@ type ClientInterface interface {
 	GiveXP(target string, amount int) error
 	ApplyEffect(target, effect string, seconds int) error
 	ClearInventory(target string) error
+
+	// 感知
+	Perceive(radius int, detail string) (*PerceiveResult, error)
 }

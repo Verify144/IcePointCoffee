@@ -179,5 +179,35 @@ func (m *MockClient) ClearInventory(target string) error {
 	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/clear %s", target))
 	return nil
 }
+func (m *MockClient) Perceive(radius int, detail string) (*PerceiveResult, error) {
+	if !m.Connected {
+		return nil, fmt.Errorf("not connected")
+	}
+	return &PerceiveResult{
+		Success: true,
+		Player: Player{
+			Name:     "MockPlayer",
+			X:        0, Y: 64, Z: 0,
+			Health:   20,
+			MaxHealth: 20,
+			Food:     20,
+			GameMode: "survival",
+			World:    "overworld",
+		},
+		NearbyPlayers: []NearbyPlayer{
+			{Name: "Steve", X: 5, Y: 64, Z: 3, Dist: 5.8},
+			{Name: "Alex", X: -4, Y: 65, Z: 7, Dist: 8.1},
+		},
+		NearbyEntities: []NearbyEntity{
+			{Type: "pig", X: 8, Y: 64, Z: -2, Dist: 8.2},
+			{Type: "cow", X: -6, Y: 64, Z: 1, Dist: 6.1},
+		},
+		NearbyBlocks: []NearbyBlock{
+			{ID: "grass_block", X: 0, Y: 63, Z: 0, Dist: 1},
+			{ID: "dirt", X: 1, Y: 63, Z: 0, Dist: 1},
+		},
+		Description: "你在主城广场中心，坐标 (0.0, 64.0, 0.0)，生命值 20/20，饱食度 20/20，游戏模式：生存。\n附近有 2 名玩家：Steve(距离6m)、Alex(距离8m)。\n附近有 2 种生物：pig(x1)、cow(x1)。\n脚下地面有方块：grass_block dirt。",
+	}, nil
+}
 
 var _ ClientInterface = (*MockClient)(nil)

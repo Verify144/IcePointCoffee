@@ -313,5 +313,21 @@ func (a *Adapter) ClearInventory(target string) error {
 	return a.runCmd(fmt.Sprintf("/clear %s", target))
 }
 
+// Perceive 感知周围环境
+func (a *Adapter) Perceive(radius int, detail string) (*PerceiveResult, error) {
+	c := a.client()
+	if c == nil || !c.IsConnected() {
+		return nil, fmt.Errorf("未连接到服务器")
+	}
+	if radius <= 0 {
+		radius = 10
+	}
+	if detail == "" {
+		detail = "medium"
+	}
+	ws := NewWorldState()
+	return ws.Perceive(context.Background(), a, radius, detail), nil
+}
+
 // compile-time interface check
 var _ ClientInterface = (*Adapter)(nil)

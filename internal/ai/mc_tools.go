@@ -598,6 +598,7 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 	xp := NewMCXPTool()
 	effect := NewMCEffectTool()
 	clearInv := NewMCClearInventoryTool()
+	perceive := NewMCPerceiveTool()
 
 	reg.Register(command)
 	reg.Register(chat)
@@ -626,6 +627,7 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 	reg.Register(xp)
 	reg.Register(effect)
 	reg.Register(clearInv)
+	reg.Register(perceive)
 
 	return &MCController{
 		Command:    command,
@@ -655,6 +657,7 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 		XP:         xp,
 		Effect:     effect,
 		ClearInv:   clearInv,
+		Perceive:   perceive,
 	}
 }
 
@@ -687,6 +690,7 @@ type MCController struct {
 	XP         *MCXPTool
 	Effect     *MCEffectTool
 	ClearInv   *MCClearInventoryTool
+	Perceive   *MCPerceiveTool
 }
 
 // Inject 注入 MC 客户端到所有工具
@@ -718,6 +722,7 @@ func (c *MCController) Inject(client mc.ClientInterface) {
 	c.XP.SetClient(client)
 	c.Effect.SetClient(client)
 	c.ClearInv.SetClient(client)
+	c.Perceive.SetClient(client)
 }
 
 // init 启动时间

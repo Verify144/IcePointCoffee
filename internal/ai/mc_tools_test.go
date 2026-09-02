@@ -265,7 +265,7 @@ func TestMCControllerInject(t *testing.T) {
 
 	// 所有工具已注册
 	tools := reg.List()
-	if len(tools) < 27 {
+	if len(tools) < 28 {
 		t.Errorf("Expected at least 27 tools, got %d", len(tools))
 	}
 
@@ -508,5 +508,73 @@ func TestMCClearInventoryTool(t *testing.T) {
 	m := result.(map[string]interface{})
 	if m["success"] != true {
 		t.Error("clear_inventory should succeed")
+	}
+}
+
+func TestMCPerceiveTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	p := NewMCPerceiveTool()
+	p.SetClient(mcClient)
+	result, err := p.Execute(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(*mc.PerceiveResult)
+	if !m.Success {
+		t.Error("perceive should succeed")
+	}
+	if m.Description == "" {
+		t.Error("description should not be empty")
+	}
+	if m.Player.Name == "" {
+		t.Error("player name should not be empty")
+	}
+}
+
+func TestMCPerceiveToolWithRadius(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	p := NewMCPerceiveTool()
+	p.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"radius": 20, "detail": "high", "scope": "nearby",
+	})
+	result, err := p.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(*mc.PerceiveResult)
+	if !m.Success {
+		t.Error("perceive with params should succeed")
+	}
+}
+
+func TestMCPerceiveToolScopePlayers(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	p := NewMCPerceiveTool()
+	p.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{
+		"scope": "players",
+	})
+	result, err := p.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(*mc.PerceiveResult)
+	if !m.Success {
+		t.Error("perceive players scope should succeed")
+	}
+}
+
+func TestMCPerceiveToolNotConnected(t *testing.T) {
+	mcClient := mc.NewMock(false)
+	p := NewMCPerceiveTool()
+	p.SetClient(mcClient)
+	result, err := p.Execute(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != false {
+		t.Error("perceive with no client should return error result")
 	}
 }
