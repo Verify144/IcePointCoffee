@@ -57,4 +57,15 @@ type ClientInterface interface {
 	Fill(x1, y1, z1, x2, y2, z2 int, block string) error
 	SetTime(time string) error
 	SetWeather(weather string) error
+
+	// 世界管理
+	SetDifficulty(difficulty string) error
+	SetWorldBorder(centerX, centerZ, radius float64) error
+	SetSpawnpoint(x, y, z float64) error
+
+	// 实体/玩家
+	SetNametag(target, nametag string) error
+	GiveXP(target string, amount int) error
+	ApplyEffect(target, effect string, seconds int) error
+	ClearInventory(target string) error
 }

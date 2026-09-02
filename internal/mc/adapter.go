@@ -249,5 +249,69 @@ func (a *Adapter) SetBossBar(target string, title string, healthPercent float32)
 	return a.runCmd(fmt.Sprintf("/bossbar add %s \"%s\"", target, title))
 }
 
+// SetDifficulty 设置世界难度
+func (a *Adapter) SetDifficulty(difficulty string) error {
+	switch difficulty {
+	case "peaceful", "easy", "normal", "hard", "p", "e", "n", "h":
+		return a.runCmd(fmt.Sprintf("/difficulty %s", difficulty))
+	default:
+		return fmt.Errorf("未知的难度: %s (peaceful/easy/normal/hard)", difficulty)
+	}
+}
+
+// SetWorldBorder 设置世界边界
+func (a *Adapter) SetWorldBorder(centerX, centerZ, radius float64) error {
+	a.runCmd(fmt.Sprintf("/worldborder center %.1f %.1f", centerX, centerZ))
+	return a.runCmd(fmt.Sprintf("/worldborder set %.1f", radius))
+}
+
+// SetSpawnpoint 设置重生点
+func (a *Adapter) SetSpawnpoint(x, y, z float64) error {
+	return a.runCmd(fmt.Sprintf("/setworldspawn %.1f %.1f %.1f", x, y, z))
+}
+
+// SetNametag 给实体设置命名牌
+func (a *Adapter) SetNametag(target, nametag string) error {
+	return a.runCmd(fmt.Sprintf("/entitydata @e[type=%s,limit=1] {CustomName:'\"%s\"'}", target, nametag))
+}
+
+// GiveXP 给玩家经验值
+func (a *Adapter) GiveXP(target string, amount int) error {
+	if amount > 0 {
+		return a.runCmd(fmt.Sprintf("/xp %d %s", amount, target))
+	}
+	return fmt.Errorf("经验值必须为正数: %d", amount)
+}
+
+// ApplyEffect 给玩家施加药水效果
+func (a *Adapter) ApplyEffect(target, effect string, seconds int) error {
+	validEffects := map[string]bool{
+		"speed": true, "slowness": true, "haste": true, "mining_fatigue": true,
+		"strength": true, "instant_health": true, "instant_damage": true,
+		"jump_boost": true, "nausea": true, "regeneration": true,
+		"resistance": true, "fire_resistance": true, "water_breathing": true,
+		"invisibility": true, "blindness": true, "night_vision": true,
+		"hunger": true, "weakness": true, "poison": true,
+		"wither": true, "health_boost": true, "absorption": true,
+		"saturation": true, "glowing": true, "levitation": true,
+		"luck": true, "unluck": true, "slow_falling": true,
+		"conduit_power": true, "dolphins_grace": true, "bad_omen": true,
+		"hero_of_the_village": true, "darkness": true,
+	}
+	effect = strings.ToLower(strings.TrimSpace(effect))
+	if !validEffects[effect] {
+		return fmt.Errorf("未知的药水效果: %s", effect)
+	}
+	if seconds <= 0 {
+		seconds = 30
+	}
+	return a.runCmd(fmt.Sprintf("/effect %s %s %d", target, effect, seconds))
+}
+
+// ClearInventory 清空玩家物品栏
+func (a *Adapter) ClearInventory(target string) error {
+	return a.runCmd(fmt.Sprintf("/clear %s", target))
+}
+
 // compile-time interface check
 var _ ClientInterface = (*Adapter)(nil)

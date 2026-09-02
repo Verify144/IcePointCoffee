@@ -150,5 +150,34 @@ func (m *MockClient) SetBossBar(target string, title string, healthPercent float
 	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/bossbar add %s \"%s\"", target, title))
 	return nil
 }
+func (m *MockClient) SetDifficulty(difficulty string) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/difficulty %s", difficulty))
+	return nil
+}
+func (m *MockClient) SetWorldBorder(centerX, centerZ, radius float64) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/worldborder center %.1f %.1f", centerX, centerZ))
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/worldborder set %.1f", radius))
+	return nil
+}
+func (m *MockClient) SetSpawnpoint(x, y, z float64) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/setworldspawn %.1f %.1f %.1f", x, y, z))
+	return nil
+}
+func (m *MockClient) SetNametag(target, nametag string) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/entitydata @e[type=%s] {CustomName:'\"%s\"'}", target, nametag))
+	return nil
+}
+func (m *MockClient) GiveXP(target string, amount int) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/xp %d %s", amount, target))
+	return nil
+}
+func (m *MockClient) ApplyEffect(target, effect string, seconds int) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/effect %s %s %d", target, effect, seconds))
+	return nil
+}
+func (m *MockClient) ClearInventory(target string) error {
+	_, _ = m.SendCommand(context.Background(), fmt.Sprintf("/clear %s", target))
+	return nil
+}
 
 var _ ClientInterface = (*MockClient)(nil)

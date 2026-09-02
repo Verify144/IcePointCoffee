@@ -590,6 +590,14 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 	respawn := NewMCRespawnTool()
 	swing := NewMCSwingArmTool()
 	bossbar := NewMCBossBarTool()
+	weather := NewMCWeatherTool()
+	worldborder := NewMCWorldBorderTool()
+	spawnpoint := NewMCSpawnpointTool()
+	difficulty := NewMCDifficultyTool()
+	nametag := NewMCNametagTool()
+	xp := NewMCXPTool()
+	effect := NewMCEffectTool()
+	clearInv := NewMCClearInventoryTool()
 
 	reg.Register(command)
 	reg.Register(chat)
@@ -610,6 +618,14 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 	reg.Register(respawn)
 	reg.Register(swing)
 	reg.Register(bossbar)
+	reg.Register(weather)
+	reg.Register(worldborder)
+	reg.Register(spawnpoint)
+	reg.Register(difficulty)
+	reg.Register(nametag)
+	reg.Register(xp)
+	reg.Register(effect)
+	reg.Register(clearInv)
 
 	return &MCController{
 		Command:    command,
@@ -631,6 +647,14 @@ func RegisterMCTools(reg *ToolRegistry) *MCController {
 		Respawn:    respawn,
 		Swing:      swing,
 		BossBar:    bossbar,
+		Weather:    weather,
+		WorldBorder: worldborder,
+		Spawnpoint: spawnpoint,
+		Difficulty: difficulty,
+		Nametag:    nametag,
+		XP:         xp,
+		Effect:     effect,
+		ClearInv:   clearInv,
 	}
 }
 
@@ -655,6 +679,14 @@ type MCController struct {
 	Respawn    *MCRespawnTool
 	Swing      *MCSwingArmTool
 	BossBar    *MCBossBarTool
+	Weather     *MCWeatherTool
+	WorldBorder *MCWorldBorderTool
+	Spawnpoint *MCSpawnpointTool
+	Difficulty *MCDifficultyTool
+	Nametag    *MCNametagTool
+	XP         *MCXPTool
+	Effect     *MCEffectTool
+	ClearInv   *MCClearInventoryTool
 }
 
 // Inject 注入 MC 客户端到所有工具
@@ -678,6 +710,14 @@ func (c *MCController) Inject(client mc.ClientInterface) {
 	c.Respawn.SetClient(client)
 	c.Swing.SetClient(client)
 	c.BossBar.SetClient(client)
+	c.Weather.SetClient(client)
+	c.WorldBorder.SetClient(client)
+	c.Spawnpoint.SetClient(client)
+	c.Difficulty.SetClient(client)
+	c.Nametag.SetClient(client)
+	c.XP.SetClient(client)
+	c.Effect.SetClient(client)
+	c.ClearInv.SetClient(client)
 }
 
 // init 启动时间

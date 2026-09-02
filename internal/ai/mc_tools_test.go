@@ -265,8 +265,8 @@ func TestMCControllerInject(t *testing.T) {
 
 	// 所有工具已注册
 	tools := reg.List()
-	if len(tools) < 19 {
-		t.Errorf("Expected at least 19 tools, got %d", len(tools))
+	if len(tools) < 27 {
+		t.Errorf("Expected at least 27 tools, got %d", len(tools))
 	}
 
 	// 找到 mc_command 并执行
@@ -389,5 +389,124 @@ func TestMCRespawnTool(t *testing.T) {
 	m := result.(map[string]interface{})
 	if m["success"] != true {
 		t.Error("respawn should succeed")
+	}
+}
+
+func TestMCWeatherTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	w := NewMCWeatherTool()
+	w.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]string{"weather": "rain"})
+	result, err := w.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("weather should succeed")
+	}
+}
+
+func TestMCWorldBorderTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	wb := NewMCWorldBorderTool()
+	wb.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{"center_x": 0.0, "center_z": 0.0, "radius": 1000000.0})
+	result, err := wb.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("worldborder should succeed")
+	}
+}
+
+func TestMCSpawnpointTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	sp := NewMCSpawnpointTool()
+	sp.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{"x": 0.0, "y": 64.0, "z": 0.0})
+	result, err := sp.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("spawnpoint should succeed")
+	}
+}
+
+func TestMCDifficultyTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	d := NewMCDifficultyTool()
+	d.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]string{"difficulty": "hard"})
+	result, err := d.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("difficulty should succeed")
+	}
+}
+
+func TestMCNametagTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	n := NewMCNametagTool()
+	n.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]string{"target": "zombie", "nametag": "Boss Zombie"})
+	result, err := n.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("nametag should succeed")
+	}
+}
+
+func TestMCXPTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	xp := NewMCXPTool()
+	xp.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{"target": "@s", "amount": 100})
+	result, err := xp.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("xp should succeed")
+	}
+}
+
+func TestMCEffectTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	e := NewMCEffectTool()
+	e.SetClient(mcClient)
+	args, _ := json.Marshal(map[string]interface{}{"target": "@s", "effect": "speed", "seconds": 60})
+	result, err := e.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("effect should succeed")
+	}
+}
+
+func TestMCClearInventoryTool(t *testing.T) {
+	mcClient := mc.NewMock(true)
+	ci := NewMCClearInventoryTool()
+	ci.SetClient(mcClient)
+	result, err := ci.Execute(context.Background(), json.RawMessage(`{"target":"@s"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := result.(map[string]interface{})
+	if m["success"] != true {
+		t.Error("clear_inventory should succeed")
 	}
 }
