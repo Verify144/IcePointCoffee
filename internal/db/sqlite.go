@@ -110,6 +110,11 @@ func (d *DB) Close() error {
 	return d.sqldb.Close()
 }
 
+// SQLDB 返回底层 *sql.DB（用于跨包共享）
+func (d *DB) SQLDB() *sql.DB {
+	return d.sqldb
+}
+
 // TaskStore 任务存储。
 type TaskStore struct {
 	db *DB

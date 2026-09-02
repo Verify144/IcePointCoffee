@@ -15,6 +15,7 @@ import (
 	"github.com/Verify144/IcePointCoffee/internal/ai"
 	"github.com/Verify144/IcePointCoffee/internal/builder"
 	"github.com/Verify144/IcePointCoffee/internal/cron"
+	"github.com/Verify144/IcePointCoffee/internal/mc"
 	"github.com/Verify144/IcePointCoffee/internal/metrics"
 	"github.com/Verify144/IcePointCoffee/internal/task"
 	"github.com/Verify144/IcePointCoffee/internal/template"
@@ -43,6 +44,10 @@ type Server struct {
 	// Cron
 	cronStore *cron.Store
 	cronSched *cron.Scheduler
+
+	// MC 工具
+	mcAdapter *mc.Adapter
+	mcTools   *ai.MCController
 
 	// 流式会话管理（用于 AI 流式取消）
 	streamCancels map[string]context.CancelFunc
@@ -206,6 +211,10 @@ func (s *Server) Start() error {
 	s.registry.Register(&ai.GetTimeTool{})
 	s.registry.Register(&ai.CalculateTool{})
 
+	// MC 工具（延迟注册，由 main.go 注入 client 后激活）
+	s.mcAdapter = mc.NewAdapter()
+	s.mcTools = ai.RegisterMCTools(s.registry)
+
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.port),
 		Handler:      s.MetricsMiddleware(s.withCORS(s.mux)),
@@ -222,6 +231,17 @@ func (s *Server) Start() error {
 
 	return s.server.ListenAndServe()
 }
+
+// SetMCAdapter 注入 MC 客户端适配器，激活 MC 工具
+func (s *Server) SetMCAdapter(adapter *mc.Adapter) {
+	s.mu.Lock()
+	s.mcAdapter = adapter
+	s.mu.Unlock()
+	if s.mcTools != nil {
+		s.mcTools.Inject(adapter)
+	}
+}
+
 
 // Stop 停止服务器
 func (s *Server) Stop() error {

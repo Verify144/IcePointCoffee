@@ -17,10 +17,12 @@ import (
 	"github.com/Verify144/IcePointCoffee/internal/config"
 	"github.com/Verify144/IcePointCoffee/internal/db"
 	"github.com/Verify144/IcePointCoffee/internal/importer"
-	netherite "github.com/Verify144/IcePointCoffee/internal/netherite"
-	"github.com/Verify144/IcePointCoffee/internal/netherite/mc"
+	"github.com/Verify144/IcePointCoffee/internal/mc"
+
+	netherite_mc "github.com/Verify144/IcePointCoffee/internal/netherite/mc"
 	"github.com/Verify144/IcePointCoffee/internal/netherite/protocol"
 	"github.com/Verify144/IcePointCoffee/internal/plugin"
+	"github.com/Verify144/IcePointCoffee/internal/server"
 )
 
 func main() {
@@ -65,7 +67,7 @@ func main() {
 	pluginManager := plugin.NewManager(cfg.Plugin.Dir)
 
 	// 初始化 MC 客户端
-	mcClient, err := mc.NewClient(&mc.Options{
+	mcClient, err := netherite_mc.NewClient(&netherite_mc.Options{
 		FBToken:    cfg.Server.FBToken,
 		ServerCode: cfg.Server.Address,
 		ServerPass: "",
@@ -76,10 +78,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "MC 客户端初始化失败: %v\n", err)
 		mcClient = nil
 	} else {
-		eventProcessor := mc.NewEventProcessor(mcClient)
+		eventProcessor := netherite_mc.NewEventProcessor(mcClient)
 		eventProcessor.Start()
 
-		asyncExecutor := mc.NewAsyncExecutor(mcClient, 4)
+		asyncExecutor := netherite_mc.NewAsyncExecutor(mcClient, 4)
 		asyncExecutor.Start()
 		defer asyncExecutor.Stop()
 
@@ -94,6 +96,8 @@ func main() {
 		})
 	}
 
+	mcAdapter := mc.NewAdapter()
+	mcAdapter.SetClient(mcClient)
 	cmdExecutor := importer.NewExecutor(mcClient)
 	_ = cmdExecutor
 
@@ -112,17 +116,17 @@ func main() {
 
 	// 启动 HTTP RPC 服务
 	if cfg.Plugin.HTTPPort > 0 {
-		httpServer := netherite.NewHTTPServer(&netherite.HTTPConfig{
-			Port:    cfg.Plugin.HTTPPort,
-			Timeout: 30 * time.Second,
-		})
-		if mcClient != nil {
-			httpServer.SetConn(mcClient)
+		// AI RPC 服务（支持 AI 工具调用）
+		rpcServer := server.NewServerWithDB(int(cfg.Plugin.HTTPPort), database.SQLDB())
+		mcAdapter := mc.NewAdapter()
+		mcAdapter.SetClient(mcClient) // 注入真实客户端
+		rpcServer.SetMCAdapter(mcAdapter)
+		if err := rpcServer.Start(); err != nil {
+			log.Fatalf("HTTP Server 启动失败: %v", err)
 		}
-		httpServer.Start()
-		defer httpServer.Stop()
-		fmt.Printf("HTTP RPC 插件服务: http://127.0.0.1:%d\n", cfg.Plugin.HTTPPort)
+		defer rpcServer.Stop()
 		fmt.Printf("📊 Dashboard: http://127.0.0.1:%d/\n", cfg.Plugin.HTTPPort)
+		fmt.Printf("🤖 AI Chat: POST http://127.0.0.1:%d/api/v1/ai/chat\n", cfg.Plugin.HTTPPort)
 	}
 
 	// 连接服务器
@@ -213,7 +217,7 @@ func main() {
 func handleRequest(ctx context.Context, prompt string,
 	agentEngine *agent.Engine,
 	buildEngine *builder.Builder,
-	mcClient *mc.Client) {
+	mcClient *netherite_mc.Client) {
 
 	fmt.Println("正在分析需求...")
 
