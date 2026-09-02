@@ -17,6 +17,7 @@ import (
 	"github.com/Verify144/IcePointCoffee/internal/cron"
 	"github.com/Verify144/IcePointCoffee/internal/db"
 	"github.com/Verify144/IcePointCoffee/internal/mc"
+	"github.com/Verify144/IcePointCoffee/internal/mcp"
 	"github.com/Verify144/IcePointCoffee/internal/metrics"
 	"github.com/Verify144/IcePointCoffee/internal/task"
 	"github.com/Verify144/IcePointCoffee/internal/template"
@@ -41,6 +42,9 @@ type Server struct {
 
 	// 模板
 	templateStore *template.Store
+
+	// MCP
+	mcpHandler *mcp.HTTPHandler
 
 	// Cron
 	cronStore *cron.Store
@@ -327,6 +331,18 @@ func (s *Server) Start() error {
 	s.mcAdapter = mc.NewAdapter()
 	s.mcTools = ai.RegisterMCTools(s.registry)
 
+	// MCP HTTP 端点（/mcp/info, /mcp, /mcp/stream）
+	s.mcpHandler = mcp.NewHTTPHandler(mcp.NewServer("IcePointCoffee", "0.1.0"))
+	s.mcpHandler.Server().SetToolSource(func() []mcp.ToolExecutor {
+		tools := s.registry.List()
+		out := make([]mcp.ToolExecutor, 0, len(tools))
+		for _, t := range tools {
+			out = append(out, &mcpToolAdapter{tool: t})
+		}
+		return out
+	})
+	s.mcpHandler.RegisterRoutes(s.mux)
+
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.port),
 		Handler:      s.MetricsMiddleware(s.withCORS(s.mux)),
@@ -340,6 +356,7 @@ func (s *Server) Start() error {
 	log.Printf("🤖 AI Chat: POST http://localhost:%d/api/v1/ai/chat", s.port)
 	log.Printf("📡 Events: GET http://localhost:%d/api/v1/events", s.port)
 	log.Printf("📈 Metrics: http://localhost:%d/metrics", s.port)
+	log.Printf("🔌 MCP: POST http://localhost:%d/mcp (JSON-RPC) | GET http://localhost:%d/mcp/info", s.port, s.port)
 
 	return s.server.ListenAndServe()
 }
@@ -742,4 +759,18 @@ func writeJSONError(w http.ResponseWriter, status int, err, msg string) {
 		"error":   err,
 		"message": msg,
 	})
+}
+
+// mcpToolAdapter 把 ai.Tool 转成 mcp.ToolExecutor
+type mcpToolAdapter struct {
+	tool ai.Tool
+}
+
+func (a *mcpToolAdapter) Name() string        { return a.tool.Name() }
+func (a *mcpToolAdapter) Description() string { return a.tool.Description() }
+func (a *mcpToolAdapter) Parameters() map[string]interface{} {
+	return a.tool.Parameters()
+}
+func (a *mcpToolAdapter) Execute(ctx context.Context, args json.RawMessage) (interface{}, error) {
+	return a.tool.Execute(ctx, args)
 }
