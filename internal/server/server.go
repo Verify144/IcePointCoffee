@@ -15,6 +15,7 @@ import (
 	"github.com/Verify144/IcePointCoffee/internal/ai"
 	"github.com/Verify144/IcePointCoffee/internal/builder"
 	"github.com/Verify144/IcePointCoffee/internal/metrics"
+	"github.com/Verify144/IcePointCoffee/internal/task"
 )
 
 // Server HTTP RPC 服务
@@ -30,22 +31,54 @@ type Server struct {
 	plugins   map[string]interface{}
 	commands  []string
 	rateLimit *RateLimiter
+	taskManager *task.Manager
 	events    []Event
 	maxEvents int
 }
 
 // NewServer 创建服务器
 func NewServer(port int) *Server {
-	return &Server{
-		port:      port,
-		mux:       http.NewServeMux(),
-		registry:  ai.NewToolRegistry(),
-		memory:    ai.NewMemory(50),
-		builder:   builder.New(),
-		plugins:   make(map[string]interface{}),
-		maxEvents: 100,
-		rateLimit: NewRateLimiter(100, time.Minute),
+	taskStore := task.NewListStore()
+	taskMgr := task.NewManager(taskStore, 4)
+
+	s := &Server{
+		port:        port,
+		mux:         http.NewServeMux(),
+		registry:    ai.NewToolRegistry(),
+		memory:      ai.NewMemory(50),
+		builder:     builder.New(),
+		plugins:     make(map[string]interface{}),
+		maxEvents:   100,
+		rateLimit:   NewRateLimiter(100, time.Minute),
+		taskManager: taskMgr,
 	}
+	taskMgr.Start()
+
+	// 注册内置任务 handler
+	taskMgr.Register("echo", func(ctx context.Context, t *task.Task) error {
+		if msg, ok := t.Payload["message"].(string); ok {
+			t.Result = "Echo: " + msg
+		}
+		return nil
+	})
+	taskMgr.Register("delay", func(ctx context.Context, t *task.Task) error {
+		seconds := 1
+		if v, ok := t.Payload["seconds"].(float64); ok {
+			seconds = int(v)
+		}
+		for i := 0; i < seconds; i++ {
+			select {
+			case <-ctx.Done():
+				return task.ErrCancelled
+			case <-time.After(time.Second):
+			}
+			t.Progress = (i + 1) * 100 / seconds
+		}
+		t.Result = fmt.Sprintf("等待 %d 秒完成", seconds)
+		return nil
+	})
+
+	return s
 }
 
 // SetupRoutes 设置路由
@@ -62,8 +95,18 @@ func (s *Server) SetupRoutes() {
 	// ==== API v1 ====
 	api := http.NewServeMux()
 	api.Handle("/ai/chat", s.rateLimit.Middleware(http.HandlerFunc(s.handleAIChat)))
+	// AI 流式对话
+	api.Handle("/ai/chat/stream", s.rateLimit.Middleware(http.HandlerFunc(s.handleAIChatStream)))
 	api.HandleFunc("/ai/tools", s.handleAITools)
 	api.HandleFunc("/ai/memory", s.handleAIMemory)
+
+	// 任务管理
+	// 同时注册 /tasks 和 /tasks/ 以支持子路径匹配
+	// /tasks 用于精确匹配（列表/提交）
+	// /tasks/ 用于子路径匹配（详情/取消/统计）
+	api.HandleFunc("/tasks", s.handleTasksRoot)
+	api.HandleFunc("/tasks/", s.handleTasksRoot)
+
 	api.Handle("/commands", s.rateLimit.Middleware(http.HandlerFunc(s.handleCommands)))
 	api.HandleFunc("/events", s.handleEvents)
 	api.HandleFunc("/plugins", s.handlePlugins)
